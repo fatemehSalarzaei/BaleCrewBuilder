@@ -1,0 +1,118 @@
+# Invalid: user_bot and admin_bot share both token_env and webhook_path.
+# Expected validation errors:
+#   - shared token_env 'SHARED_BOT_TOKEN'
+#   - shared webhook_path '/webhook/shared'
+
+blueprint_version: "1.0"
+
+project:
+  name: "Shared Webhook Platform"
+  slug: "shared-webhook-platform"
+  platform: "bale"
+  backend: "fastapi"
+  frontend: "miniapp_panel"
+  generation_mode: "documentation_first"
+
+workflow:
+  documentation_required: true
+  human_approval_required: true
+  document_status: "DOCUMENT_APPROVED"
+  implementation_starts_after: "BLUEPRINT_VALIDATED"
+
+actors:
+  - key: "member"
+    name: "Member"
+    type: "user"
+
+roles:
+  - key: "member"
+    title: "Member"
+    is_admin: false
+  - key: "admin"
+    title: "Admin"
+    is_admin: true
+
+permissions: []
+
+bots:
+  - key: "user_bot"
+    title: "User Bot"
+    audience: "users"
+    token_env: "SHARED_BOT_TOKEN"       # ← shared with admin_bot (INVALID)
+    webhook_path: "/webhook/shared"     # ← shared with admin_bot (INVALID)
+    allowed_roles: ["member"]
+    commands: []
+    handlers: []
+    security_policy:
+      require_registered_user: true
+
+  - key: "admin_bot"
+    title: "Admin Bot"
+    audience: "admins"
+    token_env: "SHARED_BOT_TOKEN"       # ← same as user_bot (INVALID)
+    webhook_path: "/webhook/shared"     # ← same as user_bot (INVALID)
+    allowed_roles: ["admin"]
+    commands: []
+    handlers: []
+    security_policy:
+      require_registered_user: true
+
+miniapp:
+  enabled: true
+  auth_endpoint: "/auth/bale-miniapp"
+  routes:
+    - path: "/user/dashboard"
+      allowed_roles: ["member"]
+      page_type: "dashboard"
+      api_dependencies: []
+
+backend:
+  framework: "fastapi"
+  python_version: "3.12"
+  async_mode: true
+
+database:
+  entities:
+    - {name: "users", table_name: "users", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "roles", table_name: "roles", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "permissions", table_name: "permissions", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "user_roles", table_name: "user_roles", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "role_permissions", table_name: "role_permissions", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "bale_accounts", table_name: "bale_accounts", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "bots", table_name: "bots", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "bot_conversations", table_name: "bot_conversations", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "processed_updates", table_name: "processed_updates", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "audit_logs", table_name: "audit_logs", fields: [], relationships: [], indexes: [], audit: false}
+    - {name: "app_settings", table_name: "app_settings", fields: [], relationships: [], indexes: [], audit: false}
+
+flows: []
+
+api:
+  endpoints:
+    - name: "health_check"
+      method: "GET"
+      path: "/health"
+      auth_required: false
+      allowed_roles: []
+      request_schema: null
+      response_schema: "HealthResponse"
+      service_method: "health_check"
+      audit_required: false
+
+security:
+  miniapp_hmac_validation: true
+  jwt_enabled: true
+  bot_webhook_secret: true
+  audit_log_enabled: true
+  rbac_enabled: true
+
+testing:
+  test_framework: "pytest"
+  coverage_target: 80
+  test_stubs: []
+
+generation:
+  template_profile: "fastapi_react_bale_v1"
+  enabled_modules: ["rbac", "audit_log", "bale_client"]
+  custom_logic_blocks: []
+  output_format: "zip"

@@ -1,0 +1,429 @@
+blueprint_version: "1.0"
+
+project:
+  name: "Resource Platform"
+  slug: "resource-platform"
+  platform: "bale"
+  backend: "fastapi"
+  frontend: "miniapp_panel"
+  generation_mode: "documentation_first"
+
+workflow:
+  documentation_required: true
+  human_approval_required: true
+  document_status: "DOCUMENT_APPROVED"
+  implementation_starts_after: "BLUEPRINT_VALIDATED"
+
+actors:
+  - key: "member"
+    name: "Regular Member"
+    type: "user"
+  - key: "admin_user"
+    name: "Administrator"
+    type: "admin"
+
+roles:
+  - key: "member"
+    title: "Member"
+    description: "Regular platform member"
+    is_admin: false
+  - key: "admin"
+    title: "Administrator"
+    description: "Platform administrator"
+    is_admin: true
+
+permissions:
+  - key: "view_resources"
+    description: "View available resources"
+    roles: ["member", "admin"]
+  - key: "manage_resources"
+    description: "Create, update, delete resources"
+    roles: ["admin"]
+
+bots:
+  - key: "user_bot"
+    title: "Member Bot"
+    audience: "users"
+    token_env: "USER_BOT_TOKEN"
+    webhook_path: "/webhook/user"
+    allowed_roles: ["member"]
+    miniapp_default_route: "/user/dashboard"
+    commands:
+      - command: "/start"
+        description: "Start the bot"
+        handler: "handle_start"
+        allowed_roles: ["member"]
+      - command: "/list"
+        description: "List resources"
+        handler: "handle_list"
+        allowed_roles: ["member"]
+    handlers: ["handle_start", "handle_list"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: false
+
+  - key: "admin_bot"
+    title: "Admin Bot"
+    audience: "admins"
+    token_env: "ADMIN_BOT_TOKEN"
+    webhook_path: "/webhook/admin"
+    allowed_roles: ["admin"]
+    miniapp_default_route: "/admin/dashboard"
+    commands:
+      - command: "/start"
+        description: "Admin bot start"
+        handler: "admin_handle_start"
+        allowed_roles: ["admin"]
+      - command: "/stats"
+        description: "View statistics"
+        handler: "admin_handle_stats"
+        allowed_roles: ["admin"]
+    handlers: ["admin_handle_start", "admin_handle_stats"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: true
+
+miniapp:
+  enabled: true
+  auth_endpoint: "/auth/bale-miniapp"
+  routes:
+    - path: "/user/dashboard"
+      allowed_roles: ["member"]
+      page_type: "dashboard"
+      api_dependencies: ["get_member_dashboard"]
+    - path: "/admin/dashboard"
+      allowed_roles: ["admin"]
+      page_type: "dashboard"
+      api_dependencies: ["get_admin_dashboard"]
+
+backend:
+  framework: "fastapi"
+  python_version: "3.12"
+  async_mode: true
+  additional_packages: []
+
+database:
+  entities:
+    - name: "users"
+      table_name: "users"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "display_name"
+          type: "string"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "roles"
+      table_name: "roles"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "permissions"
+      table_name: "permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "user_roles"
+      table_name: "user_roles"
+      fields:
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users", "roles"]
+      indexes: []
+      audit: false
+
+    - name: "role_permissions"
+      table_name: "role_permissions"
+      fields:
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+        - name: "permission_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["roles", "permissions"]
+      indexes: []
+      audit: false
+
+    - name: "bale_accounts"
+      table_name: "bale_accounts"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bale_user_id"
+          type: "string"
+          nullable: false
+          unique: true
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users"]
+      indexes: ["bale_user_id"]
+      audit: false
+
+    - name: "bots"
+      table_name: "bots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "bot_conversations"
+      table_name: "bot_conversations"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bot_id"
+          type: "uuid"
+          nullable: false
+        - name: "chat_id"
+          type: "string"
+          nullable: false
+      relationships: ["bots"]
+      indexes: []
+      audit: false
+
+    - name: "processed_updates"
+      table_name: "processed_updates"
+      fields:
+        - name: "update_id"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "bot_key"
+          type: "string"
+          nullable: false
+        - name: "processed_at"
+          type: "datetime"
+          nullable: false
+      relationships: []
+      indexes: ["bot_key"]
+      audit: false
+
+    - name: "audit_logs"
+      table_name: "audit_logs"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "actor_id"
+          type: "uuid"
+          nullable: true
+        - name: "action"
+          type: "string"
+          nullable: false
+        - name: "target_type"
+          type: "string"
+          nullable: true
+        - name: "target_id"
+          type: "uuid"
+          nullable: true
+        - name: "metadata"
+          type: "json"
+          nullable: true
+        - name: "timestamp"
+          type: "datetime"
+          nullable: false
+        - name: "source"
+          type: "string"
+          nullable: false
+      relationships: []
+      indexes: ["actor_id", "timestamp"]
+      audit: false
+
+    - name: "app_settings"
+      table_name: "app_settings"
+      fields:
+        - name: "key"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "value"
+          type: "json"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "resources"
+      table_name: "resources"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "title"
+          type: "string"
+          nullable: false
+        - name: "owner_id"
+          type: "uuid"
+          nullable: false
+        - name: "is_active"
+          type: "boolean"
+          nullable: false
+          default: true
+      relationships: ["users"]
+      indexes: ["owner_id"]
+      audit: true
+
+flows:
+  - key: "view_resources_flow"
+    name: "View Resources"
+    trigger: "/list command via user_bot"
+    steps:
+      - step: 1
+        action: "receive_list_command"
+        actor: "user_bot"
+        target: "user"
+      - step: 2
+        action: "fetch_resources"
+        actor: "resource_service"
+        target: "database"
+      - step: 3
+        action: "return_list"
+        actor: "user_bot"
+        target: "user"
+    bots_involved: ["user_bot"]
+    api_calls: ["list_resources"]
+
+api:
+  endpoints:
+    - name: "health_check"
+      method: "GET"
+      path: "/health"
+      auth_required: false
+      allowed_roles: []
+      request_schema: null
+      response_schema: "HealthResponse"
+      service_method: "health_check"
+      audit_required: false
+
+    - name: "bale_miniapp_auth"
+      method: "POST"
+      path: "/auth/bale-miniapp"
+      auth_required: false
+      allowed_roles: []
+      request_schema: "BaleInitData"
+      response_schema: "AuthToken"
+      service_method: "auth_service.verify_miniapp_token"
+      audit_required: false
+
+    - name: "get_member_dashboard"
+      method: "GET"
+      path: "/api/v1/dashboard"
+      auth_required: true
+      allowed_roles: ["member", "admin"]
+      request_schema: null
+      response_schema: "DashboardResponse"
+      service_method: "dashboard_service.get_member_dashboard"
+      audit_required: false
+
+    - name: "list_resources"
+      method: "GET"
+      path: "/api/v1/resources"
+      auth_required: true
+      allowed_roles: ["member", "admin"]
+      request_schema: null
+      response_schema: "ResourceListResponse"
+      service_method: "resource_service.list_resources"
+      audit_required: false
+
+    - name: "get_admin_dashboard"
+      method: "GET"
+      path: "/api/v1/admin/dashboard"
+      auth_required: true
+      allowed_roles: ["admin"]
+      request_schema: null
+      response_schema: "AdminDashboardResponse"
+      service_method: "dashboard_service.get_admin_dashboard"
+      audit_required: true
+
+    - name: "create_resource"
+      method: "POST"
+      path: "/api/v1/admin/resources"
+      auth_required: true
+      allowed_roles: ["admin"]
+      request_schema: "ResourceCreate"
+      response_schema: "ResourceRead"
+      service_method: "resource_service.create_resource"
+      audit_required: true
+
+    - name: "delete_resource"
+      method: "DELETE"
+      path: "/api/v1/admin/resources/{resource_id}"
+      auth_required: true
+      allowed_roles: ["admin"]
+      request_schema: null
+      response_schema: null
+      service_method: "resource_service.delete_resource"
+      audit_required: true
+
+security:
+  miniapp_hmac_validation: true
+  jwt_enabled: true
+  bot_webhook_secret: true
+  audit_log_enabled: true
+  rbac_enabled: true
+
+testing:
+  test_framework: "pytest"
+  coverage_target: 85
+  test_stubs:
+    - "test_miniapp_invalid_hmac_rejected"
+    - "test_expired_auth_date_rejected"
+    - "test_user_bot_cannot_call_admin_api"
+    - "test_admin_bot_unauthorized_rejected"
+    - "test_admin_action_writes_audit_log"
+
+generation:
+  template_profile: "fastapi_react_bale_v1"
+  enabled_modules:
+    - "rbac"
+    - "audit_log"
+    - "bale_client"
+    - "miniapp_auth"
+    - "redis_session"
+  custom_logic_blocks: []
+  output_format: "zip"
