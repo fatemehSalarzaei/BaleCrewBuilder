@@ -15,9 +15,9 @@ from app.services.project_service import ProjectNotFoundError, ProjectService
 router = APIRouter(prefix="/projects", tags=["blueprints"])
 
 
-def _require_project(project_id: UUID, svc: ProjectService) -> None:
+async def _require_project(project_id: UUID, svc: ProjectService) -> None:
     try:
-        svc.get(project_id)
+        await svc.get(project_id)
     except ProjectNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
@@ -33,9 +33,9 @@ async def store_blueprint(
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
     blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
 ) -> BotBlueprint:
-    _require_project(project_id, project_svc)
+    await _require_project(project_id, project_svc)
     try:
-        return blueprint_svc.store(project_id, payload)
+        return await blueprint_svc.store(project_id, payload)
     except BlueprintSubmissionNotAllowedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.reason)
 
@@ -49,9 +49,9 @@ async def get_blueprint(
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
     blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
 ) -> BotBlueprint:
-    _require_project(project_id, project_svc)
+    await _require_project(project_id, project_svc)
     try:
-        return blueprint_svc.get(project_id)
+        return await blueprint_svc.get(project_id)
     except BlueprintNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,9 +69,9 @@ async def validate_blueprint(
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
     blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
 ) -> ValidationResultRead:
-    _require_project(project_id, project_svc)
+    await _require_project(project_id, project_svc)
     try:
-        result = blueprint_svc.validate(project_id)
+        result = await blueprint_svc.validate(project_id)
     except BlueprintNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

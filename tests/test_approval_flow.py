@@ -12,18 +12,18 @@ async def _create_project(client: AsyncClient, name: str = "Review Project") -> 
     return resp.json()["id"]
 
 
-def _fast_track_to_review(ps: ProjectService, project_id: str) -> None:
+async def _fast_track_to_review(ps: ProjectService, project_id: str) -> None:
     pid = UUID(project_id)
-    ps.transition(pid, ProjectStatus.DOCUMENT_GENERATING)
-    ps.transition(pid, ProjectStatus.DOCUMENT_DRAFTED)
-    ps.transition(pid, ProjectStatus.DOCUMENT_REVIEW_PENDING)
+    await ps.transition(pid, ProjectStatus.DOCUMENT_GENERATING)
+    await ps.transition(pid, ProjectStatus.DOCUMENT_DRAFTED)
+    await ps.transition(pid, ProjectStatus.DOCUMENT_REVIEW_PENDING)
 
 
 async def test_approve_document_sets_document_approved(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/approve",
@@ -47,7 +47,7 @@ async def test_approve_stores_reviewer_and_feedback(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/approve",
@@ -64,7 +64,7 @@ async def test_approve_without_reviewer_name(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/approve", json={}
@@ -78,7 +78,7 @@ async def test_request_changes_sets_change_requested(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/feedback",
@@ -99,11 +99,11 @@ async def test_request_changes_sets_change_requested(
     assert project["status"] == "DOCUMENT_CHANGE_REQUESTED"
 
 
-async def test_reject_records_decision_and_transitions_to_change_requested(
+async def test_reject_records_decision_and_transitions_to_rejected(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/feedback",
@@ -117,8 +117,44 @@ async def test_reject_records_decision_and_transitions_to_change_requested(
     data = response.json()
     assert data["decision"] == "REJECT"
     assert data["previous_status"] == "DOCUMENT_REVIEW_PENDING"
-    assert data["next_status"] == "DOCUMENT_CHANGE_REQUESTED"
+    assert data["next_status"] == "DOCUMENT_REJECTED"
 
+    project = (await client.get(f"/projects/{project_id}")).json()
+    assert project["status"] == "DOCUMENT_REJECTED"
+
+
+async def test_rejected_project_cannot_be_approved(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    project_id = await _create_project(client)
+    await _fast_track_to_review(project_service, project_id)
+    await client.post(
+        f"/projects/{project_id}/document/feedback",
+        json={"decision": "REJECT", "feedback": "Rejected."},
+    )
+
+    response = await client.post(
+        f"/projects/{project_id}/document/approve",
+        json={"feedback": "Trying to approve after reject"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_request_changes_is_distinct_from_reject(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    """REQUEST_CHANGES must not produce DOCUMENT_REJECTED — it stays as revision."""
+    project_id = await _create_project(client)
+    await _fast_track_to_review(project_service, project_id)
+
+    response = await client.post(
+        f"/projects/{project_id}/document/feedback",
+        json={"decision": "REQUEST_CHANGES", "feedback": "Please add more detail."},
+    )
+
+    data = response.json()
+    assert data["next_status"] == "DOCUMENT_CHANGE_REQUESTED"
     project = (await client.get(f"/projects/{project_id}")).json()
     assert project["status"] == "DOCUMENT_CHANGE_REQUESTED"
 
@@ -127,7 +163,7 @@ async def test_split_scope_requests_scope_revision(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/feedback",
@@ -150,7 +186,7 @@ async def test_freeze_scope_locks_approved_document_without_status_change(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     await client.post(f"/projects/{project_id}/document/approve", json={})
 
@@ -203,7 +239,7 @@ async def test_feedback_using_approve_decision_returns_422(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_project(client)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     response = await client.post(
         f"/projects/{project_id}/document/feedback",
@@ -234,16 +270,16 @@ async def test_list_reviews_returns_full_history(
 ) -> None:
     project_id = await _create_project(client)
     pid = UUID(project_id)
-    _fast_track_to_review(project_service, project_id)
+    await _fast_track_to_review(project_service, project_id)
 
     await client.post(
         f"/projects/{project_id}/document/feedback",
         json={"decision": "REQUEST_CHANGES", "feedback": "Please revise section 2"},
     )
 
-    project_service.transition(pid, ProjectStatus.DOCUMENT_GENERATING)
-    project_service.transition(pid, ProjectStatus.DOCUMENT_DRAFTED)
-    project_service.transition(pid, ProjectStatus.DOCUMENT_REVIEW_PENDING)
+    await project_service.transition(pid, ProjectStatus.DOCUMENT_GENERATING)
+    await project_service.transition(pid, ProjectStatus.DOCUMENT_DRAFTED)
+    await project_service.transition(pid, ProjectStatus.DOCUMENT_REVIEW_PENDING)
 
     await client.post(f"/projects/{project_id}/document/approve", json={"feedback": "Now good"})
 

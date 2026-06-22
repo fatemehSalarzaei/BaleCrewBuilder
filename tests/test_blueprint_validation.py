@@ -2,7 +2,6 @@
 Tests for Blueprint schema parsing, validation service rules, and blueprint API endpoints.
 """
 
-import copy
 from pathlib import Path
 from uuid import UUID
 
@@ -35,11 +34,11 @@ def _validate(filename: str):
     return BlueprintValidationService().validate(_parse(_load(filename)))
 
 
-def _fast_track_to_document_approved(ps: ProjectService, project_id: UUID) -> None:
-    ps.transition(project_id, ProjectStatus.DOCUMENT_GENERATING)
-    ps.transition(project_id, ProjectStatus.DOCUMENT_DRAFTED)
-    ps.transition(project_id, ProjectStatus.DOCUMENT_REVIEW_PENDING)
-    ps.transition(project_id, ProjectStatus.DOCUMENT_APPROVED)
+async def _fast_track_to_document_approved(ps: ProjectService, project_id: UUID) -> None:
+    await ps.transition(project_id, ProjectStatus.DOCUMENT_GENERATING)
+    await ps.transition(project_id, ProjectStatus.DOCUMENT_DRAFTED)
+    await ps.transition(project_id, ProjectStatus.DOCUMENT_REVIEW_PENDING)
+    await ps.transition(project_id, ProjectStatus.DOCUMENT_APPROVED)
 
 
 # ── YAML fixture parsing ──────────────────────────────────────────────────────
@@ -204,7 +203,7 @@ def test_admin_only_endpoint_without_audit_fails():
         "request_schema": "ActionRequest",
         "response_schema": None,
         "service_method": "admin_service.perform_action",
-        "audit_required": False,  # ← missing audit (INVALID)
+        "audit_required": False,
     })
     result = BlueprintValidationService().validate(_parse(data))
     assert not result.is_valid
@@ -236,7 +235,8 @@ def test_mixed_role_endpoint_without_audit_is_valid():
 def test_missing_core_entities_fails():
     data = _load("valid_multi_bot.yaml")
     data["database"]["entities"] = [
-        e for e in data["database"]["entities"] if e["name"] not in ("audit_logs", "processed_updates")
+        e for e in data["database"]["entities"]
+        if e["name"] not in ("audit_logs", "processed_updates")
     ]
     result = BlueprintValidationService().validate(_parse(data))
     assert not result.is_valid
@@ -317,86 +317,87 @@ def test_multiple_violations_reported_in_single_pass():
 # ── BlueprintService: store and validate via service layer ────────────────────
 
 
-def test_blueprint_service_stores_blueprint(
+async def test_blueprint_service_stores_blueprint(
     project_service: ProjectService, blueprint_service: BlueprintService
 ) -> None:
     from app.schemas.project import ProjectCreate
-    project = project_service.create(ProjectCreate(name="BP Store Test"))
-    _fast_track_to_document_approved(project_service, project.id)
+    project = await project_service.create(ProjectCreate(name="BP Store Test"))
+    await _fast_track_to_document_approved(project_service, project.id)
 
     bp = _parse(_load("valid_multi_bot.yaml"))
-    result = blueprint_service.store(project.id, bp)
+    result = await blueprint_service.store(project.id, bp)
 
     assert result.project.name == "Resource Platform"
-    project_after = project_service.get(project.id)
+    project_after = await project_service.get(project.id)
     assert project_after.status == ProjectStatus.BLUEPRINT_GENERATED
 
 
-def test_blueprint_service_validates_valid_blueprint(
+async def test_blueprint_service_validates_valid_blueprint(
     project_service: ProjectService, blueprint_service: BlueprintService
 ) -> None:
     from app.schemas.project import ProjectCreate
-    project = project_service.create(ProjectCreate(name="BP Validate Test"))
-    _fast_track_to_document_approved(project_service, project.id)
+    project = await project_service.create(ProjectCreate(name="BP Validate Test"))
+    await _fast_track_to_document_approved(project_service, project.id)
 
-    blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
-    result = blueprint_service.validate(project.id)
+    await blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
+    result = await blueprint_service.validate(project.id)
 
     assert result.is_valid
     assert result.errors == []
-    assert project_service.get(project.id).status == ProjectStatus.BLUEPRINT_VALIDATED
+    assert (await project_service.get(project.id)).status == ProjectStatus.BLUEPRINT_VALIDATED
 
 
-def test_blueprint_service_validates_invalid_blueprint_marks_failed(
+async def test_blueprint_service_validates_invalid_blueprint_marks_failed(
     project_service: ProjectService, blueprint_service: BlueprintService
 ) -> None:
     from app.schemas.project import ProjectCreate
-    project = project_service.create(ProjectCreate(name="BP Fail Test"))
-    _fast_track_to_document_approved(project_service, project.id)
+    project = await project_service.create(ProjectCreate(name="BP Fail Test"))
+    await _fast_track_to_document_approved(project_service, project.id)
 
-    blueprint_service.store(project.id, _parse(_load("invalid_shared_webhook.yaml")))
-    result = blueprint_service.validate(project.id)
+    await blueprint_service.store(project.id, _parse(_load("invalid_shared_webhook.yaml")))
+    result = await blueprint_service.validate(project.id)
 
     assert not result.is_valid
-    assert project_service.get(project.id).status == ProjectStatus.BLUEPRINT_VALIDATION_FAILED
+    assert (await project_service.get(project.id)).status == ProjectStatus.BLUEPRINT_VALIDATION_FAILED
 
 
-def test_blueprint_service_rejects_submission_on_wrong_status(
+async def test_blueprint_service_rejects_submission_on_wrong_status(
     project_service: ProjectService, blueprint_service: BlueprintService
 ) -> None:
     from app.schemas.project import ProjectCreate
-    project = project_service.create(ProjectCreate(name="Wrong Status"))
-    # Project is in DRAFT_CREATED — not yet DOCUMENT_APPROVED
+    project = await project_service.create(ProjectCreate(name="Wrong Status"))
 
     with pytest.raises(BlueprintSubmissionNotAllowedError):
-        blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
+        await blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
 
 
-def test_blueprint_resubmission_after_failure(
+async def test_blueprint_resubmission_after_failure(
     project_service: ProjectService, blueprint_service: BlueprintService
 ) -> None:
     from app.schemas.project import ProjectCreate
-    project = project_service.create(ProjectCreate(name="Retry Test"))
-    _fast_track_to_document_approved(project_service, project.id)
+    project = await project_service.create(ProjectCreate(name="Retry Test"))
+    await _fast_track_to_document_approved(project_service, project.id)
 
-    blueprint_service.store(project.id, _parse(_load("invalid_shared_webhook.yaml")))
-    blueprint_service.validate(project.id)
-    assert project_service.get(project.id).status == ProjectStatus.BLUEPRINT_VALIDATION_FAILED
+    await blueprint_service.store(project.id, _parse(_load("invalid_shared_webhook.yaml")))
+    await blueprint_service.validate(project.id)
+    assert (await project_service.get(project.id)).status == ProjectStatus.BLUEPRINT_VALIDATION_FAILED
 
-    blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
-    result = blueprint_service.validate(project.id)
+    await blueprint_service.store(project.id, _parse(_load("valid_multi_bot.yaml")))
+    result = await blueprint_service.validate(project.id)
 
     assert result.is_valid
-    assert project_service.get(project.id).status == ProjectStatus.BLUEPRINT_VALIDATED
+    assert (await project_service.get(project.id)).status == ProjectStatus.BLUEPRINT_VALIDATED
 
 
 # ── Blueprint API endpoints ───────────────────────────────────────────────────
 
 
-async def _create_approved_project(client: AsyncClient, ps: ProjectService, name: str = "API BP Test") -> str:
+async def _create_approved_project(
+    client: AsyncClient, ps: ProjectService, name: str = "API BP Test"
+) -> str:
     resp = await client.post("/projects", json={"name": name})
     pid = UUID(resp.json()["id"])
-    _fast_track_to_document_approved(ps, pid)
+    await _fast_track_to_document_approved(ps, pid)
     return str(pid)
 
 
@@ -453,7 +454,9 @@ async def test_api_validate_invalid_blueprint_returns_errors(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_approved_project(client, project_service, name="Validate Fail")
-    await client.post(f"/projects/{project_id}/blueprint", json=_load("invalid_shared_webhook.yaml"))
+    await client.post(
+        f"/projects/{project_id}/blueprint", json=_load("invalid_shared_webhook.yaml")
+    )
 
     response = await client.post(f"/projects/{project_id}/blueprint/validate")
 
@@ -478,7 +481,9 @@ async def test_api_validate_updates_project_status_to_validation_failed(
     client: AsyncClient, project_service: ProjectService
 ) -> None:
     project_id = await _create_approved_project(client, project_service, name="Status Fail")
-    await client.post(f"/projects/{project_id}/blueprint", json=_load("invalid_shared_webhook.yaml"))
+    await client.post(
+        f"/projects/{project_id}/blueprint", json=_load("invalid_shared_webhook.yaml")
+    )
     await client.post(f"/projects/{project_id}/blueprint/validate")
 
     project = (await client.get(f"/projects/{project_id}")).json()

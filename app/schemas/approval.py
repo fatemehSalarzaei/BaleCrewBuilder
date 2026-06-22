@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.project import ProjectStatus
 
@@ -41,6 +41,8 @@ class DocumentApproveCreate(BaseModel):
 
 
 class ReviewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     project_id: UUID
     document_id: UUID | None

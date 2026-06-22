@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectStatus(StrEnum):
@@ -11,6 +11,7 @@ class ProjectStatus(StrEnum):
     DOCUMENT_DRAFTED = "DOCUMENT_DRAFTED"
     DOCUMENT_REVIEW_PENDING = "DOCUMENT_REVIEW_PENDING"
     DOCUMENT_CHANGE_REQUESTED = "DOCUMENT_CHANGE_REQUESTED"
+    DOCUMENT_REJECTED = "DOCUMENT_REJECTED"
     DOCUMENT_APPROVED = "DOCUMENT_APPROVED"
     BLUEPRINT_GENERATING = "BLUEPRINT_GENERATING"
     BLUEPRINT_GENERATED = "BLUEPRINT_GENERATED"
@@ -31,6 +32,8 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     description: str

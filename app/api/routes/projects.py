@@ -15,7 +15,7 @@ async def create_project(
     payload: ProjectCreate,
     svc: Annotated[ProjectService, Depends(get_project_service)],
 ) -> ProjectRead:
-    return svc.create(payload)
+    return await svc.create(payload)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
@@ -24,7 +24,7 @@ async def get_project(
     svc: Annotated[ProjectService, Depends(get_project_service)],
 ) -> ProjectRead:
     try:
-        return svc.get(project_id)
+        return await svc.get(project_id)
     except ProjectNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"

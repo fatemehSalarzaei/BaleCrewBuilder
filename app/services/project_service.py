@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.projects import ProjectModel
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectStatus
 
 
@@ -18,9 +21,11 @@ _ALLOWED_TRANSITIONS: dict[ProjectStatus, set[ProjectStatus]] = {
     ProjectStatus.DOCUMENT_DRAFTED: {ProjectStatus.DOCUMENT_REVIEW_PENDING},
     ProjectStatus.DOCUMENT_REVIEW_PENDING: {
         ProjectStatus.DOCUMENT_CHANGE_REQUESTED,
+        ProjectStatus.DOCUMENT_REJECTED,
         ProjectStatus.DOCUMENT_APPROVED,
     },
     ProjectStatus.DOCUMENT_CHANGE_REQUESTED: {ProjectStatus.DOCUMENT_GENERATING},
+    ProjectStatus.DOCUMENT_REJECTED: set(),  # terminal — workflow stops here
     ProjectStatus.DOCUMENT_APPROVED: {ProjectStatus.BLUEPRINT_GENERATING},
     ProjectStatus.BLUEPRINT_GENERATING: {
         ProjectStatus.BLUEPRINT_GENERATED,
@@ -46,12 +51,12 @@ _ALLOWED_TRANSITIONS: dict[ProjectStatus, set[ProjectStatus]] = {
 
 
 class ProjectService:
-    def __init__(self) -> None:
-        self._store: dict[UUID, ProjectRead] = {}
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
 
-    def create(self, payload: ProjectCreate) -> ProjectRead:
+    async def create(self, payload: ProjectCreate) -> ProjectRead:
         now = datetime.now(timezone.utc)
-        project = ProjectRead(
+        row = ProjectModel(
             id=uuid4(),
             name=payload.name,
             description=payload.description,
@@ -59,24 +64,26 @@ class ProjectService:
             created_at=now,
             updated_at=now,
         )
-        self._store[project.id] = project
-        return project
+        self.db.add(row)
+        await self.db.commit()
+        return ProjectRead.model_validate(row)
 
-    def get(self, project_id: UUID) -> ProjectRead:
-        project = self._store.get(project_id)
-        if project is None:
+    async def get(self, project_id: UUID) -> ProjectRead:
+        row = await self.db.get(ProjectModel, project_id)
+        if row is None:
             raise ProjectNotFoundError(project_id)
-        return project
+        return ProjectRead.model_validate(row)
 
-    def transition(self, project_id: UUID, target: ProjectStatus) -> ProjectRead:
-        project = self.get(project_id)
-        allowed = _ALLOWED_TRANSITIONS.get(project.status, set())
+    async def transition(self, project_id: UUID, target: ProjectStatus) -> ProjectRead:
+        row = await self.db.get(ProjectModel, project_id)
+        if row is None:
+            raise ProjectNotFoundError(project_id)
+        allowed = _ALLOWED_TRANSITIONS.get(ProjectStatus(row.status), set())
         if target not in allowed:
             raise IllegalStatusTransitionError(
-                f"{project.status} -> {target} is not allowed"
+                f"{row.status} -> {target} is not allowed"
             )
-        updated = project.model_copy(
-            update={"status": target, "updated_at": datetime.now(timezone.utc)}
-        )
-        self._store[project_id] = updated
-        return updated
+        row.status = target
+        row.updated_at = datetime.now(timezone.utc)
+        await self.db.commit()
+        return ProjectRead.model_validate(row)

@@ -23,9 +23,9 @@ async def create_document(
     doc_svc: Annotated[DocumentService, Depends(get_document_service)],
 ) -> DocumentRead:
     try:
-        project_svc.get(project_id)
+        await project_svc.get(project_id)
     except ProjectNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-    return doc_svc.create(project_id, payload)
+    return await doc_svc.create(project_id, payload)

@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.document_reviews import DocumentReviewModel
 from app.schemas.approval import (
     ApprovalDecision,
     DocumentApproveCreate,
@@ -31,19 +35,18 @@ _REQUIRED_STATUS: dict[ApprovalDecision, ProjectStatus] = {
 _NEXT_STATUS: dict[ApprovalDecision, ProjectStatus] = {
     ApprovalDecision.APPROVE: ProjectStatus.DOCUMENT_APPROVED,
     ApprovalDecision.REQUEST_CHANGES: ProjectStatus.DOCUMENT_CHANGE_REQUESTED,
-    ApprovalDecision.REJECT: ProjectStatus.DOCUMENT_CHANGE_REQUESTED,
+    ApprovalDecision.REJECT: ProjectStatus.DOCUMENT_REJECTED,
     ApprovalDecision.SPLIT_SCOPE: ProjectStatus.DOCUMENT_CHANGE_REQUESTED,
-    ApprovalDecision.FREEZE_SCOPE: ProjectStatus.DOCUMENT_APPROVED,  # no state change, scope locked
+    ApprovalDecision.FREEZE_SCOPE: ProjectStatus.DOCUMENT_APPROVED,
 }
 
 
 class ApprovalService:
-    def __init__(self, project_service: ProjectService) -> None:
-        self._project_service = project_service
-        self._store: dict[UUID, ReviewRead] = {}
-        self._by_project: dict[UUID, list[UUID]] = {}
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self._project_service = ProjectService(db=db)
 
-    def _record(
+    async def _record(
         self,
         project_id: UUID,
         decision: ApprovalDecision,
@@ -51,7 +54,7 @@ class ApprovalService:
         reviewer_name: str | None,
         document_id: UUID | None,
     ) -> ReviewRead:
-        project = self._project_service.get(project_id)
+        project = await self._project_service.get(project_id)
         required = _REQUIRED_STATUS[decision]
         if project.status != required:
             raise InvalidDecisionForStatusError(decision, project.status)
@@ -60,9 +63,9 @@ class ApprovalService:
         next_status = _NEXT_STATUS[decision]
 
         if next_status != previous_status:
-            self._project_service.transition(project_id, next_status)
+            await self._project_service.transition(project_id, next_status)
 
-        review = ReviewRead(
+        row = DocumentReviewModel(
             id=uuid4(),
             project_id=project_id,
             document_id=document_id,
@@ -73,12 +76,12 @@ class ApprovalService:
             next_status=next_status,
             created_at=datetime.now(timezone.utc),
         )
-        self._store[review.id] = review
-        self._by_project.setdefault(project_id, []).append(review.id)
-        return review
+        self.db.add(row)
+        await self.db.commit()
+        return ReviewRead.model_validate(row)
 
-    def approve(self, project_id: UUID, payload: DocumentApproveCreate) -> ReviewRead:
-        return self._record(
+    async def approve(self, project_id: UUID, payload: DocumentApproveCreate) -> ReviewRead:
+        return await self._record(
             project_id=project_id,
             decision=ApprovalDecision.APPROVE,
             feedback=payload.feedback,
@@ -86,8 +89,10 @@ class ApprovalService:
             document_id=payload.document_id,
         )
 
-    def submit_feedback(self, project_id: UUID, payload: DocumentFeedbackCreate) -> ReviewRead:
-        return self._record(
+    async def submit_feedback(
+        self, project_id: UUID, payload: DocumentFeedbackCreate
+    ) -> ReviewRead:
+        return await self._record(
             project_id=project_id,
             decision=payload.decision,
             feedback=payload.feedback,
@@ -95,6 +100,12 @@ class ApprovalService:
             document_id=payload.document_id,
         )
 
-    def list_for_project(self, project_id: UUID) -> list[ReviewRead]:
-        ids = self._by_project.get(project_id, [])
-        return [self._store[rid] for rid in ids]
+    async def list_for_project(self, project_id: UUID) -> list[ReviewRead]:
+        stmt = (
+            sa.select(DocumentReviewModel)
+            .where(DocumentReviewModel.project_id == project_id)
+            .order_by(DocumentReviewModel.created_at)
+        )
+        result = await self.db.execute(stmt)
+        rows = result.scalars().all()
+        return [ReviewRead.model_validate(r) for r in rows]

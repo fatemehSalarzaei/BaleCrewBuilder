@@ -1,7 +1,13 @@
+from collections.abc import AsyncGenerator
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
+import app.db.models  # noqa: F401 — registers all ORM models with Base.metadata
 from app.api import deps
+from app.db.base import Base
 from app.main import app
 from app.services.approval_service import ApprovalService
 from app.services.blueprint_service import BlueprintService
@@ -9,43 +15,53 @@ from app.services.document_service import DocumentService
 from app.services.project_service import ProjectService
 from app.services.validation_service import BlueprintValidationService
 
-
-@pytest.fixture
-def project_service() -> ProjectService:
-    return ProjectService()
+_TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
 
 @pytest.fixture
-def document_service() -> DocumentService:
-    return DocumentService()
+async def db() -> AsyncGenerator[AsyncSession, None]:
+    engine = create_async_engine(
+        _TEST_DB_URL,
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+    await engine.dispose()
 
 
 @pytest.fixture
-def approval_service(project_service: ProjectService) -> ApprovalService:
-    return ApprovalService(project_service=project_service)
+def project_service(db: AsyncSession) -> ProjectService:
+    return ProjectService(db=db)
 
 
 @pytest.fixture
-def blueprint_service(project_service: ProjectService) -> BlueprintService:
-    validation_svc = BlueprintValidationService()
-    return BlueprintService(project_service=project_service, validation_service=validation_svc)
+def document_service(db: AsyncSession) -> DocumentService:
+    return DocumentService(db=db)
 
 
 @pytest.fixture
-async def client(
-    project_service: ProjectService,
-    document_service: DocumentService,
-    approval_service: ApprovalService,
-    blueprint_service: BlueprintService,
-) -> AsyncClient:
-    app.dependency_overrides[deps.get_project_service] = lambda: project_service
-    app.dependency_overrides[deps.get_document_service] = lambda: document_service
-    app.dependency_overrides[deps.get_approval_service] = lambda: approval_service
-    app.dependency_overrides[deps.get_blueprint_service] = lambda: blueprint_service
+def approval_service(db: AsyncSession) -> ApprovalService:
+    return ApprovalService(db=db)
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+
+@pytest.fixture
+def blueprint_service(db: AsyncSession) -> BlueprintService:
+    return BlueprintService(db=db, validation_service=BlueprintValidationService())
+
+
+@pytest.fixture
+async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
+        yield db
+
+    app.dependency_overrides[deps.get_db] = _override_get_db
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
     app.dependency_overrides.clear()

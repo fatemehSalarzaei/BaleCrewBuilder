@@ -1,0 +1,70 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+.eggs/
+MANIFEST
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env.local
+.env.*.local
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+# .env.example is intentionally tracked
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ── Type checking ─────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# ── Editors & OS ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Alembic ───────────────────────────────────────────────────────────────────
+# Track migration files; ignore only the compiled cache
+app/db/migrations/__pycache__/
+app/db/migrations/versions/__pycache__/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# docker-compose.yml is tracked; ignore local override
+docker-compose.override.yml
+
+# ── Generated project output (Builder Platform artefacts) ─────────────────────
+generated_output/
+generated_projects/
+
+# ── Celery ────────────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Claude Code session memory (local only) ───────────────────────────────────
+memory/

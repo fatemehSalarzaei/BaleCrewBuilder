@@ -1,7 +1,10 @@
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import get_db
 from app.services.approval_service import ApprovalService
 from app.services.blueprint_service import BlueprintService
 from app.services.document_service import DocumentService
@@ -10,40 +13,40 @@ from app.services.project_service import ProjectService
 from app.services.project_status_service import ProjectStatusService
 from app.services.validation_service import BlueprintValidationService
 
-_project_service = ProjectService()
-_document_service = DocumentService()
-_approval_service = ApprovalService(project_service=_project_service)
-_validation_service = BlueprintValidationService()
-_blueprint_service = BlueprintService(
-    project_service=_project_service,
-    validation_service=_validation_service,
-)
+
+def get_project_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ProjectService:
+    return ProjectService(db=db)
 
 
-def get_project_service() -> ProjectService:
-    return _project_service
+def get_document_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DocumentService:
+    return DocumentService(db=db)
 
 
-def get_document_service() -> DocumentService:
-    return _document_service
+def get_approval_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ApprovalService:
+    return ApprovalService(db=db)
 
 
-def get_approval_service() -> ApprovalService:
-    return _approval_service
+def get_blueprint_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> BlueprintService:
+    return BlueprintService(db=db, validation_service=BlueprintValidationService())
 
 
 def get_validation_service() -> BlueprintValidationService:
-    return _validation_service
-
-
-def get_blueprint_service() -> BlueprintService:
-    return _blueprint_service
+    return BlueprintValidationService()
 
 
 def get_generation_gate_service(
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
+    blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
 ) -> GenerationGateService:
-    return GenerationGateService(project_service=project_svc)
+    return GenerationGateService(project_service=project_svc, blueprint_service=blueprint_svc)
 
 
 def get_project_status_service(
