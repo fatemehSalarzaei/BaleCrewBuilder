@@ -20,5 +20,7 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO")
 
+    generation_output_dir: str = Field(default="./generated_output")
+
 
 settings = Settings()

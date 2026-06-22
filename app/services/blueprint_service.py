@@ -85,6 +85,14 @@ class BlueprintService:
             raise BlueprintNotFoundError(project_id)
         return BotBlueprint.model_validate(row.blueprint_data)
 
+    async def get_row_id(self, project_id: UUID) -> UUID:
+        stmt = sa.select(BlueprintModel.id).where(BlueprintModel.project_id == project_id)
+        result = await self.db.execute(stmt)
+        row_id = result.scalar_one_or_none()
+        if row_id is None:
+            raise BlueprintNotFoundError(project_id)
+        return row_id
+
     async def get_stored_at(self, project_id: UUID) -> datetime | None:
         stmt = sa.select(BlueprintModel.stored_at).where(
             BlueprintModel.project_id == project_id
