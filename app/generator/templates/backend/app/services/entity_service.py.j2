@@ -1,0 +1,49 @@
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.{{ entity.name }} import {{ entity_class_name }}
+from app.schemas.{{ entity.name }} import (
+    {{ entity_class_name }}Create,
+    {{ entity_class_name }}Read,
+    {{ entity_class_name }}Update,
+)
+
+
+class {{ entity_class_name }}Service:
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    async def list(self) -> list[{{ entity_class_name }}Read]:
+        result = await self._db.execute(select({{ entity_class_name }}))
+        return [{{ entity_class_name }}Read.model_validate(row) for row in result.scalars().all()]
+
+    async def get(self, record_id: UUID) -> {{ entity_class_name }}Read | None:
+        row = await self._db.get({{ entity_class_name }}, record_id)
+        return {{ entity_class_name }}Read.model_validate(row) if row else None
+
+    async def create(self, data: {{ entity_class_name }}Create) -> {{ entity_class_name }}Read:
+        row = {{ entity_class_name }}(**data.model_dump(exclude_unset=True))
+        self._db.add(row)
+        await self._db.commit()
+        await self._db.refresh(row)
+        return {{ entity_class_name }}Read.model_validate(row)
+
+    async def update(self, record_id: UUID, data: {{ entity_class_name }}Update) -> {{ entity_class_name }}Read | None:
+        row = await self._db.get({{ entity_class_name }}, record_id)
+        if row is None:
+            return None
+        for key, value in data.model_dump(exclude_unset=True).items():
+            setattr(row, key, value)
+        await self._db.commit()
+        await self._db.refresh(row)
+        return {{ entity_class_name }}Read.model_validate(row)
+
+    async def delete(self, record_id: UUID) -> bool:
+        row = await self._db.get({{ entity_class_name }}, record_id)
+        if row is None:
+            return False
+        await self._db.delete(row)
+        await self._db.commit()
+        return True

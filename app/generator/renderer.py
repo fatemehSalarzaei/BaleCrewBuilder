@@ -5,6 +5,32 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from app.generator.validators import assert_safe_path
 
+_SA_TYPES: dict[str, str] = {
+    "uuid": "UUID",
+    "string": "String",
+    "boolean": "Boolean",
+    "datetime": "DateTime",
+    "json": "JSON",
+    "integer": "Integer",
+    "float": "Float",
+    "text": "Text",
+}
+
+_PY_TYPES: dict[str, str] = {
+    "uuid": "UUID",
+    "string": "str",
+    "boolean": "bool",
+    "datetime": "datetime",
+    "json": "dict | None",
+    "integer": "int",
+    "float": "float",
+    "text": "str",
+}
+
+
+def _pascal_case(value: str) -> str:
+    return "".join(word.capitalize() for word in value.split("_"))
+
 
 class Renderer:
     def __init__(self, output_root: Path, templates_dir: Path | None = None) -> None:
@@ -18,6 +44,9 @@ class Renderer:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        self._env.filters["pascal_case"] = _pascal_case
+        self._env.filters["sa_type"] = lambda t: _SA_TYPES.get(t, "String")
+        self._env.filters["py_type"] = lambda t: _PY_TYPES.get(t, "Any")
 
     def write_file(self, relative_path: str, content: str) -> str:
         target = assert_safe_path(relative_path, self.output_root)

@@ -11,8 +11,10 @@ from app.generator import GeneratorCore
 from app.generator.packager import package_as_zip
 from app.schemas.blueprint import OutputFormat
 from app.schemas.generation import GenerationRunRead, GenerationRunStatus
+from app.schemas.project import ProjectStatus
 from app.services.blueprint_service import BlueprintService
 from app.services.generation_gate_service import GenerationGateService
+from app.services.project_service import ProjectService
 
 
 class GenerationService:
@@ -26,6 +28,7 @@ class GenerationService:
         self._db = db
         self._gate = gate
         self._blueprint_svc = blueprint_svc
+        self._project_svc = ProjectService(db=db)
         self._output_dir = output_dir or Path(settings.generation_output_dir)
 
     async def run_generation(self, project_id: UUID) -> GenerationRunRead:
@@ -48,6 +51,8 @@ class GenerationService:
 
         run_output_dir = self._output_dir / str(run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
+
+        await self._project_svc.transition(project_id, ProjectStatus.IMPLEMENTATION_GENERATING)
 
         try:
             result = GeneratorCore().run(blueprint, run_output_dir)
@@ -82,11 +87,13 @@ class GenerationService:
                     )
                 )
 
+            await self._project_svc.transition(project_id, ProjectStatus.IMPLEMENTATION_GENERATED)
             run.status = GenerationRunStatus.COMPLETED
             run.finished_at = datetime.now(timezone.utc)
             await self._db.commit()
 
         except Exception as exc:
+            await self._project_svc.transition(project_id, ProjectStatus.IMPLEMENTATION_FAILED)
             run.status = GenerationRunStatus.FAILED
             run.finished_at = datetime.now(timezone.utc)
             run.error_message = str(exc)

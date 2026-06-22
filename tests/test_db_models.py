@@ -1,11 +1,18 @@
 """
-Verify that all required Builder Platform tables are registered in SQLAlchemy metadata.
+Verify that all required Builder Platform tables are registered in SQLAlchemy metadata
+and that an initial Alembic migration covering those tables exists.
 
-These tests do not touch a real database — they only inspect the ORM layer so they
-run without PostgreSQL or asyncpg.
+These tests do not touch a real database — they only inspect the ORM layer and the
+migration source file, so they run without PostgreSQL or asyncpg.
 """
+from pathlib import Path
+
 import app.db.models  # noqa: F401 — side-effect import registers all models with Base.metadata
 from app.db.base import Base
+
+_MIGRATIONS_VERSIONS_DIR = (
+    Path(__file__).parent.parent / "app" / "db" / "migrations" / "versions"
+)
 
 REQUIRED_TABLES = {
     "projects",
@@ -67,3 +74,31 @@ def test_generation_runs_nullable_blueprint_id():
     table = Base.metadata.tables["generation_runs"]
     bp_id_col = table.c["blueprint_id"]
     assert bp_id_col.nullable, "generation_runs.blueprint_id must be nullable"
+
+
+# ── Alembic migration file checks ─────────────────────────────────────────────
+
+
+def test_migration_versions_directory_is_not_empty():
+    version_files = [
+        f for f in _MIGRATIONS_VERSIONS_DIR.iterdir()
+        if f.suffix == ".py" and not f.name.startswith("__")
+    ]
+    assert version_files, (
+        f"No migration version files found in {_MIGRATIONS_VERSIONS_DIR}. "
+        "Run 'alembic revision' to create the initial migration."
+    )
+
+
+def test_migration_references_all_required_tables():
+    version_files = [
+        f for f in _MIGRATIONS_VERSIONS_DIR.iterdir()
+        if f.suffix == ".py" and not f.name.startswith("__")
+    ]
+    assert version_files, "No migration version files to inspect."
+
+    combined_source = "\n".join(f.read_text(encoding="utf-8") for f in version_files)
+    missing = [t for t in sorted(REQUIRED_TABLES) if f'"{t}"' not in combined_source]
+    assert not missing, (
+        f"These required tables are not referenced in any migration file: {missing}"
+    )

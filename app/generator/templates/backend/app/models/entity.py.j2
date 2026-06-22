@@ -1,0 +1,32 @@
+import uuid as _uuid
+from datetime import datetime as _datetime
+
+from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+
+
+class {{ entity_class_name }}(Base):
+    __tablename__ = "{{ entity.table_name }}"
+
+{% for field in entity.fields %}
+{% if field.primary_key and field.type == "uuid" %}
+    {{ field.name }}: Mapped[_uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4)
+{% elif field.type == "uuid" %}
+    {{ field.name }}: Mapped[_uuid.UUID{% if field.nullable %} | None{% endif %}] = mapped_column(UUID(as_uuid=True){% if not field.nullable %}, nullable=False{% endif %}{% if field.unique %}, unique=True{% endif %})
+{% elif field.type == "string" %}
+    {{ field.name }}: Mapped[str{% if field.nullable %} | None{% endif %}] = mapped_column(String{% if not field.nullable %}, nullable=False{% endif %}{% if field.unique %}, unique=True{% endif %}{% if field.primary_key %}, primary_key=True{% endif %})
+{% elif field.type == "boolean" %}
+    {{ field.name }}: Mapped[bool{% if field.nullable %} | None{% endif %}] = mapped_column(Boolean{% if not field.nullable %}, nullable=False{% endif %}{% if field.default is not none %}, default={{ field.default }}{% endif %})
+{% elif field.type == "datetime" %}
+    {{ field.name }}: Mapped[_datetime{% if field.nullable %} | None{% endif %}] = mapped_column(DateTime(timezone=True){% if not field.nullable %}, nullable=False{% endif %})
+{% elif field.type == "json" %}
+    {{ field.name }}: Mapped[dict | None] = mapped_column(JSON)
+{% elif field.type == "integer" %}
+    {{ field.name }}: Mapped[int{% if field.nullable %} | None{% endif %}] = mapped_column(Integer{% if not field.nullable %}, nullable=False{% endif %})
+{% else %}
+    {{ field.name }}: Mapped[str{% if field.nullable %} | None{% endif %}] = mapped_column(String{% if not field.nullable %}, nullable=False{% endif %})
+{% endif %}
+{% endfor %}

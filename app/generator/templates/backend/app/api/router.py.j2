@@ -1,0 +1,9 @@
+from fastapi import APIRouter
+{% for entity in entities %}
+from app.api.routes.{{ entity.name }} import router as {{ entity.name }}_router
+{% endfor %}
+
+api_router = APIRouter()
+{% for entity in entities %}
+api_router.include_router({{ entity.name }}_router, prefix="/{{ entity.name }}", tags=["{{ entity.name }}"])
+{% endfor %}

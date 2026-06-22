@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+
+class {{ entity_class_name }}Base(BaseModel):
+{% set ns = namespace(has_non_pk=false) %}
+{% for field in entity.fields %}
+{% if not field.primary_key %}
+{% set ns.has_non_pk = true %}
+    {{ field.name }}: {{ field.type | py_type }}{% if field.nullable %} | None = None{% else %}{% endif %}
+
+{% endif %}
+{% endfor %}
+{% if not ns.has_non_pk %}
+    pass
+{% endif %}
+
+
+class {{ entity_class_name }}Create({{ entity_class_name }}Base):
+    pass
+
+
+class {{ entity_class_name }}Update({{ entity_class_name }}Base):
+    pass
+
+
+class {{ entity_class_name }}Read({{ entity_class_name }}Base):
+    model_config = ConfigDict(from_attributes=True)
+
+{% for field in entity.fields %}
+{% if field.primary_key %}
+    {{ field.name }}: {{ field.type | py_type }}
+{% endif %}
+{% endfor %}
