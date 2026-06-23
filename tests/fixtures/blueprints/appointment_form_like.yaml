@@ -1,0 +1,406 @@
+blueprint_version: "1.0"
+
+project:
+  name: "Appointment Booking Platform"
+  slug: "appointment-booking-platform"
+  platform: "bale"
+  backend: "fastapi"
+  frontend: "miniapp_panel"
+  generation_mode: "documentation_first"
+
+workflow:
+  documentation_required: true
+  human_approval_required: true
+  document_status: "DOCUMENT_APPROVED"
+  implementation_starts_after: "BLUEPRINT_VALIDATED"
+
+actors:
+  - key: "member"
+    name: "Platform Member"
+    type: "user"
+
+roles:
+  - key: "member"
+    title: "Member"
+    description: "Registered member who can book and manage appointments"
+    is_admin: false
+
+permissions:
+  - key: "book_appointment"
+    description: "Book an available appointment slot"
+    roles: ["member"]
+  - key: "view_own_appointments"
+    description: "View own booked appointments"
+    roles: ["member"]
+  - key: "cancel_appointment"
+    description: "Cancel a booked appointment"
+    roles: ["member"]
+
+bots:
+  - key: "user_bot"
+    title: "Appointment Member Bot"
+    audience: "users"
+    token_env: "USER_BOT_TOKEN"
+    webhook_path: "/webhook/user"
+    allowed_roles: ["member"]
+    commands:
+      - command: "/start"
+        description: "Start the bot"
+        handler: "handle_start"
+        allowed_roles: ["member"]
+      - command: "/my_appointments"
+        description: "List my booked appointments"
+        handler: "handle_my_appointments"
+        allowed_roles: ["member"]
+      - command: "/book_appointment"
+        description: "Book a new appointment"
+        handler: "handle_book_appointment"
+        allowed_roles: ["member"]
+    handlers: ["handle_start", "handle_my_appointments", "handle_book_appointment"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: false
+
+miniapp:
+  enabled: true
+  auth_endpoint: "/auth/bale-miniapp"
+  routes:
+    - path: "/dashboard"
+      allowed_roles: ["member"]
+      page_type: "dashboard"
+      api_dependencies: ["list_my_appointments"]
+
+backend:
+  framework: "fastapi"
+  python_version: "3.12"
+  async_mode: true
+  additional_packages: []
+
+database:
+  entities:
+    - name: "users"
+      table_name: "users"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "display_name"
+          type: "string"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "roles"
+      table_name: "roles"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "permissions"
+      table_name: "permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "user_roles"
+      table_name: "user_roles"
+      fields:
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users", "roles"]
+      indexes: []
+      audit: false
+
+    - name: "role_permissions"
+      table_name: "role_permissions"
+      fields:
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+        - name: "permission_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["roles", "permissions"]
+      indexes: []
+      audit: false
+
+    - name: "bale_accounts"
+      table_name: "bale_accounts"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bale_user_id"
+          type: "string"
+          nullable: false
+          unique: true
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users"]
+      indexes: ["bale_user_id"]
+      audit: false
+
+    - name: "bots"
+      table_name: "bots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "bot_conversations"
+      table_name: "bot_conversations"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bot_id"
+          type: "uuid"
+          nullable: false
+        - name: "chat_id"
+          type: "string"
+          nullable: false
+      relationships: ["bots"]
+      indexes: []
+      audit: false
+
+    - name: "processed_updates"
+      table_name: "processed_updates"
+      fields:
+        - name: "update_id"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "bot_key"
+          type: "string"
+          nullable: false
+        - name: "processed_at"
+          type: "datetime"
+          nullable: false
+      relationships: []
+      indexes: ["bot_key"]
+      audit: false
+
+    - name: "audit_logs"
+      table_name: "audit_logs"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "actor_id"
+          type: "uuid"
+          nullable: true
+        - name: "action"
+          type: "string"
+          nullable: false
+        - name: "target_type"
+          type: "string"
+          nullable: true
+        - name: "target_id"
+          type: "uuid"
+          nullable: true
+        - name: "metadata"
+          type: "json"
+          nullable: true
+        - name: "timestamp"
+          type: "datetime"
+          nullable: false
+        - name: "source"
+          type: "string"
+          nullable: false
+      relationships: []
+      indexes: ["actor_id", "timestamp"]
+      audit: false
+
+    - name: "app_settings"
+      table_name: "app_settings"
+      fields:
+        - name: "key"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "value"
+          type: "json"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "appointments"
+      table_name: "appointments"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "slot_id"
+          type: "uuid"
+          nullable: false
+        - name: "member_id"
+          type: "uuid"
+          nullable: false
+        - name: "status"
+          type: "string"
+          nullable: false
+        - name: "notes"
+          type: "text"
+          nullable: true
+        - name: "created_at"
+          type: "datetime"
+          nullable: false
+      relationships: ["users", "appointment_slots"]
+      indexes: ["member_id", "status"]
+      audit: false
+
+    - name: "appointment_slots"
+      table_name: "appointment_slots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "start_time"
+          type: "datetime"
+          nullable: false
+        - name: "end_time"
+          type: "datetime"
+          nullable: false
+        - name: "is_available"
+          type: "boolean"
+          nullable: false
+      relationships: []
+      indexes: ["start_time", "is_available"]
+      audit: false
+
+flows:
+  - key: "flow_appointment_booking"
+    name: "Book Appointment"
+    trigger: "/book_appointment command via user_bot"
+    steps:
+      - step: 1
+        action: "receive_book_appointment_command"
+        actor: "user_bot"
+        target: "user"
+      - step: 2
+        action: "reserve_slot"
+        actor: "appointment_service"
+        target: "database"
+      - step: 3
+        action: "send_confirmation"
+        actor: "user_bot"
+        target: "user"
+    bots_involved: ["user_bot"]
+    api_calls: ["book_appointment"]
+
+api:
+  endpoints:
+    - name: "health_check"
+      method: "GET"
+      path: "/health"
+      auth_required: false
+      allowed_roles: []
+      request_schema: null
+      response_schema: "HealthResponse"
+      service_method: "health_check"
+      audit_required: false
+
+    - name: "bale_miniapp_auth"
+      method: "POST"
+      path: "/auth/bale-miniapp"
+      auth_required: false
+      allowed_roles: []
+      request_schema: "BaleInitData"
+      response_schema: "AuthToken"
+      service_method: "auth_service.verify_miniapp_token"
+      audit_required: false
+
+    - name: "book_appointment"
+      method: "POST"
+      path: "/api/v1/appointments"
+      auth_required: true
+      allowed_roles: ["member"]
+      request_schema: "AppointmentCreate"
+      response_schema: "AppointmentRead"
+      service_method: "appointment_service.book_appointment"
+      audit_required: false
+
+    - name: "list_my_appointments"
+      method: "GET"
+      path: "/api/v1/appointments"
+      auth_required: true
+      allowed_roles: ["member"]
+      request_schema: null
+      response_schema: "AppointmentListResponse"
+      service_method: "appointment_service.list_my_appointments"
+      audit_required: false
+
+    - name: "cancel_appointment"
+      method: "DELETE"
+      path: "/api/v1/appointments/{appointment_id}"
+      auth_required: true
+      allowed_roles: ["member"]
+      request_schema: null
+      response_schema: null
+      service_method: "appointment_service.cancel_appointment"
+      audit_required: false
+
+security:
+  miniapp_hmac_validation: true
+  jwt_enabled: true
+  bot_webhook_secret: true
+  audit_log_enabled: true
+  rbac_enabled: true
+
+testing:
+  test_framework: "pytest"
+  coverage_target: 80
+  test_stubs:
+    - "test_member_can_book_available_slot"
+    - "test_double_booking_same_slot_rejected"
+    - "test_member_can_cancel_own_appointment"
+    - "test_unregistered_user_is_rejected"
+
+generation:
+  template_profile: "fastapi_react_bale_v1"
+  enabled_modules:
+    - "rbac"
+    - "audit_log"
+    - "bale_client"
+    - "miniapp_auth"
+  custom_logic_blocks: []
+  output_format: "zip"

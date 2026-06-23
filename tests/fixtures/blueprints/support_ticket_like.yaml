@@ -1,0 +1,458 @@
+blueprint_version: "1.0"
+
+project:
+  name: "Support Ticket Platform"
+  slug: "support-ticket-platform"
+  platform: "bale"
+  backend: "fastapi"
+  frontend: "miniapp_panel"
+  generation_mode: "documentation_first"
+
+workflow:
+  documentation_required: true
+  human_approval_required: true
+  document_status: "DOCUMENT_APPROVED"
+  implementation_starts_after: "BLUEPRINT_VALIDATED"
+
+actors:
+  - key: "member"
+    name: "Regular Member"
+    type: "user"
+  - key: "admin_user"
+    name: "Support Administrator"
+    type: "admin"
+
+roles:
+  - key: "member"
+    title: "Member"
+    description: "Regular member who can submit and track support requests"
+    is_admin: false
+  - key: "admin"
+    title: "Administrator"
+    description: "Support administrator who manages and resolves requests"
+    is_admin: true
+
+permissions:
+  - key: "submit_ticket"
+    description: "Submit a new support request"
+    roles: ["member", "admin"]
+  - key: "view_own_tickets"
+    description: "View own submitted requests"
+    roles: ["member", "admin"]
+  - key: "manage_tickets"
+    description: "View all requests and change their status"
+    roles: ["admin"]
+
+bots:
+  - key: "user_bot"
+    title: "Support Member Bot"
+    audience: "users"
+    token_env: "USER_BOT_TOKEN"
+    webhook_path: "/webhook/user"
+    allowed_roles: ["member"]
+    commands:
+      - command: "/start"
+        description: "Start the bot"
+        handler: "handle_start"
+        allowed_roles: ["member"]
+      - command: "/my_tickets"
+        description: "List my support requests"
+        handler: "handle_my_tickets"
+        allowed_roles: ["member"]
+      - command: "/new_ticket"
+        description: "Submit a new support request"
+        handler: "handle_new_ticket"
+        allowed_roles: ["member"]
+    handlers: ["handle_start", "handle_my_tickets", "handle_new_ticket"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: false
+
+  - key: "admin_bot"
+    title: "Support Admin Bot"
+    audience: "admins"
+    token_env: "ADMIN_BOT_TOKEN"
+    webhook_path: "/webhook/admin"
+    allowed_roles: ["admin"]
+    commands:
+      - command: "/start"
+        description: "Admin bot start"
+        handler: "admin_handle_start"
+        allowed_roles: ["admin"]
+      - command: "/pending_tickets"
+        description: "List pending support requests"
+        handler: "admin_handle_pending_tickets"
+        allowed_roles: ["admin"]
+      - command: "/close_ticket"
+        description: "Close a support request"
+        handler: "admin_handle_close_ticket"
+        allowed_roles: ["admin"]
+    handlers: ["admin_handle_start", "admin_handle_pending_tickets", "admin_handle_close_ticket"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: true
+
+miniapp:
+  enabled: true
+  auth_endpoint: "/auth/bale-miniapp"
+  routes:
+    - path: "/user/dashboard"
+      allowed_roles: ["member", "admin"]
+      page_type: "dashboard"
+      api_dependencies: ["list_my_tickets"]
+    - path: "/admin/dashboard"
+      allowed_roles: ["admin"]
+      page_type: "dashboard"
+      api_dependencies: ["admin_list_tickets"]
+
+backend:
+  framework: "fastapi"
+  python_version: "3.12"
+  async_mode: true
+  additional_packages: []
+
+database:
+  entities:
+    - name: "users"
+      table_name: "users"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "display_name"
+          type: "string"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "roles"
+      table_name: "roles"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "permissions"
+      table_name: "permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "user_roles"
+      table_name: "user_roles"
+      fields:
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users", "roles"]
+      indexes: []
+      audit: false
+
+    - name: "role_permissions"
+      table_name: "role_permissions"
+      fields:
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+        - name: "permission_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["roles", "permissions"]
+      indexes: []
+      audit: false
+
+    - name: "bale_accounts"
+      table_name: "bale_accounts"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bale_user_id"
+          type: "string"
+          nullable: false
+          unique: true
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+      relationships: ["users"]
+      indexes: ["bale_user_id"]
+      audit: false
+
+    - name: "bots"
+      table_name: "bots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "key"
+          type: "string"
+          nullable: false
+          unique: true
+      relationships: []
+      indexes: ["key"]
+      audit: false
+
+    - name: "bot_conversations"
+      table_name: "bot_conversations"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bot_id"
+          type: "uuid"
+          nullable: false
+        - name: "chat_id"
+          type: "string"
+          nullable: false
+      relationships: ["bots"]
+      indexes: []
+      audit: false
+
+    - name: "processed_updates"
+      table_name: "processed_updates"
+      fields:
+        - name: "update_id"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "bot_key"
+          type: "string"
+          nullable: false
+        - name: "processed_at"
+          type: "datetime"
+          nullable: false
+      relationships: []
+      indexes: ["bot_key"]
+      audit: false
+
+    - name: "audit_logs"
+      table_name: "audit_logs"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "actor_id"
+          type: "uuid"
+          nullable: true
+        - name: "action"
+          type: "string"
+          nullable: false
+        - name: "target_type"
+          type: "string"
+          nullable: true
+        - name: "target_id"
+          type: "uuid"
+          nullable: true
+        - name: "metadata"
+          type: "json"
+          nullable: true
+        - name: "timestamp"
+          type: "datetime"
+          nullable: false
+        - name: "source"
+          type: "string"
+          nullable: false
+      relationships: []
+      indexes: ["actor_id", "timestamp"]
+      audit: false
+
+    - name: "app_settings"
+      table_name: "app_settings"
+      fields:
+        - name: "key"
+          type: "string"
+          nullable: false
+          primary_key: true
+        - name: "value"
+          type: "json"
+          nullable: true
+      relationships: []
+      indexes: []
+      audit: false
+
+    - name: "tickets"
+      table_name: "tickets"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "title"
+          type: "string"
+          nullable: false
+        - name: "description"
+          type: "text"
+          nullable: false
+        - name: "status"
+          type: "string"
+          nullable: false
+        - name: "submitter_id"
+          type: "uuid"
+          nullable: false
+        - name: "created_at"
+          type: "datetime"
+          nullable: false
+        - name: "updated_at"
+          type: "datetime"
+          nullable: false
+      relationships: ["users"]
+      indexes: ["submitter_id", "status"]
+      audit: true
+
+    - name: "ticket_comments"
+      table_name: "ticket_comments"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "ticket_id"
+          type: "uuid"
+          nullable: false
+        - name: "author_id"
+          type: "uuid"
+          nullable: false
+        - name: "content"
+          type: "text"
+          nullable: false
+        - name: "created_at"
+          type: "datetime"
+          nullable: false
+      relationships: ["tickets", "users"]
+      indexes: ["ticket_id"]
+      audit: false
+
+flows:
+  - key: "flow_ticket_submission"
+    name: "Submit Support Request"
+    trigger: "/new_ticket command via user_bot"
+    steps:
+      - step: 1
+        action: "receive_new_ticket_command"
+        actor: "user_bot"
+        target: "user"
+      - step: 2
+        action: "create_ticket_record"
+        actor: "ticket_service"
+        target: "database"
+      - step: 3
+        action: "send_confirmation"
+        actor: "user_bot"
+        target: "user"
+    bots_involved: ["user_bot"]
+    api_calls: ["submit_ticket"]
+
+api:
+  endpoints:
+    - name: "health_check"
+      method: "GET"
+      path: "/health"
+      auth_required: false
+      allowed_roles: []
+      request_schema: null
+      response_schema: "HealthResponse"
+      service_method: "health_check"
+      audit_required: false
+
+    - name: "bale_miniapp_auth"
+      method: "POST"
+      path: "/auth/bale-miniapp"
+      auth_required: false
+      allowed_roles: []
+      request_schema: "BaleInitData"
+      response_schema: "AuthToken"
+      service_method: "auth_service.verify_miniapp_token"
+      audit_required: false
+
+    - name: "submit_ticket"
+      method: "POST"
+      path: "/api/v1/tickets"
+      auth_required: true
+      allowed_roles: ["member", "admin"]
+      request_schema: "TicketCreate"
+      response_schema: "TicketRead"
+      service_method: "ticket_service.submit_ticket"
+      audit_required: false
+
+    - name: "list_my_tickets"
+      method: "GET"
+      path: "/api/v1/tickets"
+      auth_required: true
+      allowed_roles: ["member", "admin"]
+      request_schema: null
+      response_schema: "TicketListResponse"
+      service_method: "ticket_service.list_my_tickets"
+      audit_required: false
+
+    - name: "admin_list_tickets"
+      method: "GET"
+      path: "/api/v1/admin/tickets"
+      auth_required: true
+      allowed_roles: ["admin"]
+      request_schema: null
+      response_schema: "TicketListResponse"
+      service_method: "ticket_service.admin_list_tickets"
+      audit_required: true
+
+    - name: "close_ticket"
+      method: "POST"
+      path: "/api/v1/admin/tickets/{ticket_id}/close"
+      auth_required: true
+      allowed_roles: ["admin"]
+      request_schema: null
+      response_schema: "TicketRead"
+      service_method: "ticket_service.close_ticket"
+      audit_required: true
+
+security:
+  miniapp_hmac_validation: true
+  jwt_enabled: true
+  bot_webhook_secret: true
+  audit_log_enabled: true
+  rbac_enabled: true
+
+testing:
+  test_framework: "pytest"
+  coverage_target: 85
+  test_stubs:
+    - "test_member_can_submit_ticket"
+    - "test_non_admin_cannot_view_admin_list"
+    - "test_close_ticket_writes_audit_log"
+    - "test_admin_bot_rejects_unauthorized_sender"
+    - "test_duplicate_webhook_update_ignored"
+
+generation:
+  template_profile: "fastapi_react_bale_v1"
+  enabled_modules:
+    - "rbac"
+    - "audit_log"
+    - "bale_client"
+    - "miniapp_auth"
+  custom_logic_blocks: []
+  output_format: "zip"
