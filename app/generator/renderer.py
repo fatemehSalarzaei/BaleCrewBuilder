@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,10 @@ def _pascal_case(value: str) -> str:
     return "".join(word.capitalize() for word in value.split("_"))
 
 
+def _extract_path_params(path: str) -> list[str]:
+    return re.findall(r"\{(\w+)\}", path)
+
+
 class Renderer:
     def __init__(self, output_root: Path, templates_dir: Path | None = None) -> None:
         self.output_root = output_root.resolve()
@@ -47,6 +52,7 @@ class Renderer:
         self._env.filters["pascal_case"] = _pascal_case
         self._env.filters["sa_type"] = lambda t: _SA_TYPES.get(t, "String")
         self._env.filters["py_type"] = lambda t: _PY_TYPES.get(t, "Any")
+        self._env.filters["extract_path_params"] = _extract_path_params
 
     def write_file(self, relative_path: str, content: str) -> str:
         target = assert_safe_path(relative_path, self.output_root)

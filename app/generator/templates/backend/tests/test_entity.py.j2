@@ -1,5 +1,7 @@
+{% if entity_has_pk %}
 import uuid
 
+{% endif %}
 import pytest
 from httpx import AsyncClient
 
@@ -8,13 +10,14 @@ async def test_list_{{ entity.name }}_returns_200(client: AsyncClient) -> None:
     resp = await client.get("/{{ entity.name }}/")
     assert resp.status_code == 200
 
+{% if entity_has_pk %}
 
 async def test_get_nonexistent_{{ entity.name }}_returns_404(client: AsyncClient) -> None:
     resp = await client.get(f"/{{ entity.name }}/{uuid.uuid4()}")
     assert resp.status_code == 404
 
+{% endif %}
 
 async def test_create_{{ entity.name }}_returns_201_or_422(client: AsyncClient) -> None:
-    # TODO: fill in a valid payload for {{ entity_class_name }}Create
     resp = await client.post("/{{ entity.name }}/", json={})
     assert resp.status_code in {201, 422}

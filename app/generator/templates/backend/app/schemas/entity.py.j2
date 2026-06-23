@@ -1,9 +1,9 @@
-from __future__ import annotations
-
-import uuid
+{% if entity_uses_uuid %}
+from uuid import UUID
+{% endif %}
+{% if entity_uses_datetime %}
 from datetime import datetime
-from typing import Any
-
+{% endif %}
 from pydantic import BaseModel, ConfigDict
 
 
@@ -12,7 +12,7 @@ class {{ entity_class_name }}Base(BaseModel):
 {% for field in entity.fields %}
 {% if not field.primary_key %}
 {% set ns.has_non_pk = true %}
-    {{ field.name }}: {{ field.type | py_type }}{% if field.nullable %} | None = None{% else %}{% endif %}
+    {{ field.name }}: {{ field.type | py_type }}{% if field.nullable %} | None = None{% endif %}
 
 {% endif %}
 {% endfor %}

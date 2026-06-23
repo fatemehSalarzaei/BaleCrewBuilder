@@ -1,0 +1,25 @@
+from typing import Any
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_db
+
+router = APIRouter()
+{% for endpoint in api_endpoints %}
+{% set path_params = endpoint.path | extract_path_params %}
+{% set sig_parts = [] %}
+{% for p in path_params %}
+{% set _ = sig_parts.append(p ~ ": str") %}
+{% endfor %}
+{% if endpoint.auth_required %}
+{% set _ = sig_parts.append("db: AsyncSession = Depends(get_db)") %}
+{% endif %}
+{% set audit_note = " | audit=True" if endpoint.audit_required else "" %}
+
+
+@router.{{ endpoint.method | lower }}("{{ endpoint.path }}")
+async def {{ endpoint.name }}({{ sig_parts | join(", ") }}) -> Any:
+    # Blueprint: {{ endpoint.name }} | service: {{ endpoint.service_method }}{{ audit_note }}
+    raise NotImplementedError
+{% endfor %}

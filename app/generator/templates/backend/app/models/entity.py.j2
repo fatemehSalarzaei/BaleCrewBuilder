@@ -10,14 +10,26 @@ from app.db.base import Base
 
 class {{ entity_class_name }}(Base):
     __tablename__ = "{{ entity.table_name }}"
+{% if not entity_has_pk %}
+    # Association table: composite primary key across non-nullable fields
+{% endif %}
 
 {% for field in entity.fields %}
-{% if field.primary_key and field.type == "uuid" %}
+{% set is_composite_pk = not entity_has_pk and not field.nullable %}
+{% if field.type == "uuid" %}
+{% if field.primary_key %}
     {{ field.name }}: Mapped[_uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid.uuid4)
-{% elif field.type == "uuid" %}
+{% elif is_composite_pk %}
+    {{ field.name }}: Mapped[_uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+{% else %}
     {{ field.name }}: Mapped[_uuid.UUID{% if field.nullable %} | None{% endif %}] = mapped_column(UUID(as_uuid=True){% if not field.nullable %}, nullable=False{% endif %}{% if field.unique %}, unique=True{% endif %})
+{% endif %}
 {% elif field.type == "string" %}
-    {{ field.name }}: Mapped[str{% if field.nullable %} | None{% endif %}] = mapped_column(String{% if not field.nullable %}, nullable=False{% endif %}{% if field.unique %}, unique=True{% endif %}{% if field.primary_key %}, primary_key=True{% endif %})
+{% if field.primary_key or is_composite_pk %}
+    {{ field.name }}: Mapped[str] = mapped_column(String, primary_key=True)
+{% else %}
+    {{ field.name }}: Mapped[str{% if field.nullable %} | None{% endif %}] = mapped_column(String{% if not field.nullable %}, nullable=False{% endif %}{% if field.unique %}, unique=True{% endif %})
+{% endif %}
 {% elif field.type == "boolean" %}
     {{ field.name }}: Mapped[bool{% if field.nullable %} | None{% endif %}] = mapped_column(Boolean{% if not field.nullable %}, nullable=False{% endif %}{% if field.default is not none %}, default={{ field.default }}{% endif %})
 {% elif field.type == "datetime" %}
