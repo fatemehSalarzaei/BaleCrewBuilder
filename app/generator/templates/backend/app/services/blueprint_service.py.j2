@@ -1,0 +1,31 @@
+"""
+Generated service stubs for {{ project.name }}.
+
+Blueprint api endpoints: {{ api_endpoints | length }}
+
+Each method raises HTTPException(501) until a real implementation is added.
+Replace these stubs with production-ready service logic.
+Do not put business rules in API routes — implement them here (R7).
+"""
+from typing import Any
+
+from fastapi import HTTPException
+{% for fn in blueprint_bare_fns %}
+
+
+async def svc_{{ fn }}() -> Any:
+    raise HTTPException(status_code=501, detail="{{ fn }}: not yet implemented")
+{% endfor %}
+{% for svc in blueprint_service_classes %}
+
+
+class {{ svc.class_name }}:
+{% for method in svc.methods %}
+    async def {{ method }}(self) -> Any:
+        raise HTTPException(
+            status_code=501,
+            detail="{{ svc.class_name }}.{{ method }}: not yet implemented",
+        )
+
+{% endfor %}
+{% endfor %}

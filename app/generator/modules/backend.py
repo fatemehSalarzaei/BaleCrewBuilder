@@ -7,6 +7,67 @@ def _pascal_case(snake: str) -> str:
     return "".join(word.capitalize() for word in snake.split("_"))
 
 
+# Service module names already generated as full implementations — avoid class name conflicts.
+_CORE_SERVICE_MODULES: frozenset[str] = frozenset({"auth_service", "audit_service"})
+
+
+def _service_class_for(module: str) -> str:
+    if module in _CORE_SERVICE_MODULES:
+        return "Bp" + _pascal_case(module)
+    return _pascal_case(module)
+
+
+def _enrich_endpoints(
+    raw_endpoints: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Parse service_method on each endpoint and compute blueprint service structure.
+
+    Returns:
+        enriched_endpoints: original dicts plus svc_class_name, svc_fn_name, svc_call
+        service_classes: list of {class_name, methods} for the blueprint_service template
+        bare_fns: list of bare function names (no class prefix)
+    """
+    enriched: list[dict[str, Any]] = []
+    class_methods: dict[str, list[str]] = {}
+    bare_fns: list[str] = []
+    seen_bare: set[str] = set()
+
+    for ep in raw_endpoints:
+        sm: str = ep.get("service_method", "")
+        if "." in sm:
+            module, fn = sm.split(".", 1)
+            class_name = _service_class_for(module)
+            enriched.append({
+                **ep,
+                "svc_class_name": class_name,
+                "svc_fn_name": fn,
+                "svc_is_bare": False,
+                "svc_call": f"{class_name}().{fn}()",
+            })
+            if class_name not in class_methods:
+                class_methods[class_name] = []
+            if fn not in class_methods[class_name]:
+                class_methods[class_name].append(fn)
+        else:
+            fn = sm
+            enriched.append({
+                **ep,
+                "svc_class_name": None,
+                "svc_fn_name": fn,
+                "svc_is_bare": True,
+                "svc_call": f"svc_{fn}()",
+            })
+            if fn not in seen_bare:
+                bare_fns.append(fn)
+                seen_bare.add(fn)
+
+    service_classes = [
+        {"class_name": cls, "methods": list(methods)}
+        for cls, methods in class_methods.items()
+    ]
+    return enriched, service_classes, bare_fns
+
+
 _PY_TYPES: dict[str, str] = {
     "uuid": "UUID",
     "string": "str",
@@ -42,6 +103,7 @@ _CORE_TEMPLATES: list[tuple[str, str]] = [
     ("backend/app/api/routes/endpoints.py.j2", "backend/app/api/routes/endpoints.py"),
     ("backend/app/services/auth_service.py.j2", "backend/app/services/auth_service.py"),
     ("backend/app/services/audit_service.py.j2", "backend/app/services/audit_service.py"),
+    ("backend/app/services/blueprint_service.py.j2", "backend/app/services/blueprint_service.py"),
 ]
 
 _ENTITY_TEMPLATES: list[tuple[str, str]] = [
@@ -56,6 +118,18 @@ _ENTITY_TEMPLATES: list[tuple[str, str]] = [
 class BackendModule:
     def generate_pre_manifest(self, renderer: Renderer, context: dict[str, Any]) -> list[str]:
         generated: list[str] = []
+
+        enriched_endpoints, service_classes, bare_fns = _enrich_endpoints(context["api_endpoints"])
+        blueprint_service_imports: list[str] = [
+            f"svc_{fn}" for fn in bare_fns
+        ] + [svc["class_name"] for svc in service_classes]
+        context = {
+            **context,
+            "api_endpoints": enriched_endpoints,
+            "blueprint_service_classes": service_classes,
+            "blueprint_bare_fns": bare_fns,
+            "blueprint_service_imports": blueprint_service_imports,
+        }
 
         for rel_path in _CORE_INIT_PATHS:
             renderer.write_file(rel_path, "")

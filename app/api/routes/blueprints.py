@@ -118,7 +118,11 @@ async def generate_blueprint_from_document(
             ),
         )
 
-    blueprint = build_placeholder_blueprint(project.name)
+    blueprint = build_placeholder_blueprint(
+        project_name=project.name,
+        document_title=latest_doc.title,
+        document_content=latest_doc.content,
+    )
 
     try:
         await blueprint_svc.store(project_id, blueprint)

@@ -5,6 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db, require_roles
 from app.services.audit_service import AuditService
+{% if blueprint_service_imports %}
+from app.services.blueprint_service import (
+{% for item in blueprint_service_imports %}
+    {{ item }},
+{% endfor %}
+)
+{% endif %}
 
 router = APIRouter()
 {% for endpoint in api_endpoints %}
@@ -36,5 +43,5 @@ async def {{ endpoint.name }}({{ sig_parts | join(", ") }}) -> Any:
 {% if endpoint.audit_required and endpoint.auth_required %}
     AuditService.log_action(current_user, "{{ endpoint.name }}")
 {% endif %}
-    raise NotImplementedError
+    return await {{ endpoint.svc_call }}
 {% endfor %}

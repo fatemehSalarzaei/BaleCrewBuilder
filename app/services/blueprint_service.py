@@ -19,6 +19,8 @@ from app.schemas.blueprint import (
     DatabaseSpec,
     EntityFieldSpec,
     EntitySpec,
+    FlowSpec,
+    FlowStepSpec,
     GenerationSpec,
     MiniAppRouteSpec,
     MiniAppSpec,
@@ -60,15 +62,89 @@ def _to_slug(name: str) -> str:
     return slug[:100] or "project"
 
 
-def build_placeholder_blueprint(project_name: str) -> BotBlueprint:
-    """Return a deterministic, generic placeholder Blueprint from a project name.
+def _extract_headings(content: str) -> list[str]:
+    """Extract Markdown heading text (# / ## / ###) from document content."""
+    headings: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            text = stripped.lstrip("#").strip()
+            if text:
+                headings.append(text)
+    return headings
 
-    The result passes all BlueprintValidationService rules so it can be stored
-    and immediately validated without manual editing. Domain-specific entities
-    and API endpoints are intentionally omitted — the human reviewer fills them
-    in after Blueprint generation.
+
+def _heading_to_safe_key(text: str) -> str:
+    """Convert arbitrary heading text to a valid identifier fragment.
+
+    The result satisfies the FlowSpec.key pattern ^[a-z_][a-z0-9_]*$.
+    Capped at 50 chars so callers can safely prefix it.
+    """
+    key = re.sub(r"[^a-z0-9]", "_", text.lower())
+    key = re.sub(r"_+", "_", key).strip("_")
+    if not key or not key[0].isalpha():
+        key = "section_" + key.lstrip("_")
+    return (key[:50] or "section").rstrip("_")
+
+
+def _derive_flows_from_headings(headings: list[str]) -> list[FlowSpec]:
+    """Create deterministic FlowSpec placeholders from document headings (max 5)."""
+    seen_keys: set[str] = set()
+    flows: list[FlowSpec] = []
+    for heading in headings[:5]:
+        key = f"flow_{_heading_to_safe_key(heading)}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        flows.append(
+            FlowSpec(
+                key=key,
+                name=heading[:200],
+                trigger=f"Document section: {heading[:180]}",
+                steps=[
+                    FlowStepSpec(step=1, action="initiate", actor="user"),
+                    FlowStepSpec(step=2, action="process", actor="backend"),
+                ],
+            )
+        )
+    return flows
+
+
+def _derive_test_stubs_from_headings(headings: list[str]) -> list[str]:
+    """Create deterministic test stub names from document headings (max 5)."""
+    stubs: list[str] = []
+    seen: set[str] = set()
+    for heading in headings[:5]:
+        stub = f"test_{_heading_to_safe_key(heading)}"
+        if stub not in seen:
+            stubs.append(stub)
+            seen.add(stub)
+    return stubs
+
+
+def build_placeholder_blueprint(
+    project_name: str,
+    document_title: str = "",
+    document_content: str = "",
+) -> BotBlueprint:
+    """Return a deterministic placeholder Blueprint derived from project name and document.
+
+    When document_title and document_content are provided the generated Blueprint
+    reflects the document: section headings become suggested flows and test stubs,
+    and the document title appears in role descriptions.
+
+    The result always passes BlueprintValidationService rules. Domain-specific
+    entities and API endpoints are left empty for the human reviewer to complete.
+    No LLM calls are made — generation is fully deterministic.
     """
     slug = _to_slug(project_name)
+
+    headings = _extract_headings(document_content)
+    doc_flows = _derive_flows_from_headings(headings)
+    doc_test_stubs = _derive_test_stubs_from_headings(headings)
+
+    # Build document-derived note for role descriptions (safe: RoleSpec.description is a free string)
+    doc_note = f" — source document: {document_title}" if document_title else ""
 
     core_entities = [
         EntitySpec(
@@ -102,8 +178,18 @@ def build_placeholder_blueprint(project_name: str) -> BotBlueprint:
             ActorSpec(key="admin_user", name="Administrator", type="admin"),
         ],
         roles=[
-            RoleSpec(key="member", title="Member", is_admin=False),
-            RoleSpec(key="admin", title="Administrator", is_admin=True),
+            RoleSpec(
+                key="member",
+                title="Member",
+                description=f"Regular platform member{doc_note}",
+                is_admin=False,
+            ),
+            RoleSpec(
+                key="admin",
+                title="Administrator",
+                description=f"Platform administrator{doc_note}",
+                is_admin=True,
+            ),
         ],
         permissions=[
             PermissionSpec(key="view_data", description="View data", roles=["member", "admin"]),
@@ -163,9 +249,10 @@ def build_placeholder_blueprint(project_name: str) -> BotBlueprint:
         ),
         backend=BackendSpec(framework="fastapi", python_version="3.12", async_mode=True),
         database=DatabaseSpec(entities=core_entities),
+        flows=doc_flows,
         api=ApiSpec(endpoints=[]),
         security=SecuritySpec(),
-        testing=TestingSpec(),
+        testing=TestingSpec(test_stubs=doc_test_stubs),
         generation=GenerationSpec(
             template_profile="fastapi_react_bale_v1",
             enabled_modules=["rbac", "audit_log", "bale_client", "miniapp_auth"],

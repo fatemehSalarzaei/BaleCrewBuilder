@@ -22,6 +22,7 @@ _CORE_BACKEND_FILES = [
     "backend/app/api/router.py",
     "backend/app/services/auth_service.py",
     "backend/app/services/audit_service.py",
+    "backend/app/services/blueprint_service.py",
 ]
 
 _CORE_INIT_FILES = [
@@ -507,3 +508,120 @@ def test_audit_service_full_stub_when_audit_enabled(tmp_path: Path) -> None:
 
     content = (output_dir / "backend/app/services/audit_service.py").read_text()
     assert "resource_type" in content, "Full audit stub should include resource_type param"
+
+
+# ── Phase 5: Blueprint service stubs (no raise NotImplementedError in routes) ─
+
+
+def test_no_raise_not_implemented_in_endpoints_file(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "raise NotImplementedError" not in content, (
+        "Generated endpoints.py must not contain 'raise NotImplementedError' — "
+        "routes must delegate to service stubs"
+    )
+
+
+def test_blueprint_service_stub_file_is_generated(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+    assert "backend/app/services/blueprint_service.py" in generated, (
+        "blueprint_service.py must appear in the generation manifest"
+    )
+    assert (output_dir / "backend/app/services/blueprint_service.py").exists()
+
+
+def test_blueprint_service_has_all_service_method_names(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/services/blueprint_service.py").read_text()
+    for endpoint in blueprint.api.endpoints:
+        sm = endpoint.service_method
+        fn = sm.split(".", 1)[-1]  # last segment is always the method/function name
+        assert fn in content, (
+            f"blueprint_service.py must contain method/function '{fn}' "
+            f"derived from service_method '{sm}'"
+        )
+
+
+def test_blueprint_service_uses_http_exception_not_not_implemented(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/services/blueprint_service.py").read_text()
+    assert "HTTPException" in content, (
+        "blueprint_service.py must raise HTTPException(501) not NotImplementedError"
+    )
+    assert "status_code=501" in content, (
+        "blueprint_service.py must use status_code=501 for placeholder responses"
+    )
+    assert "raise NotImplementedError" not in content, (
+        "blueprint_service.py must not contain raw 'raise NotImplementedError'"
+    )
+
+
+def test_endpoints_import_from_blueprint_service(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "from app.services.blueprint_service import" in content, (
+        "endpoints.py must import from blueprint_service"
+    )
+
+
+def test_endpoints_call_service_stubs(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    for endpoint in blueprint.api.endpoints:
+        sm = endpoint.service_method
+        fn = sm.split(".", 1)[-1]
+        assert fn in content, (
+            f"endpoints.py must reference service function/method '{fn}' "
+            f"from Blueprint endpoint '{endpoint.name}'"
+        )
+
+
+def test_endpoints_use_await_for_service_calls(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "return await " in content, (
+        "endpoints.py must use 'return await' to call async service stubs"
+    )
+
+
+def test_audit_required_endpoints_still_call_audit_service_after_refactor(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    audit_endpoints = [ep for ep in blueprint.api.endpoints if ep.audit_required]
+    assert audit_endpoints, "Fixture must have at least one audit_required endpoint"
+    assert "AuditService.log_action" in content, (
+        "endpoints.py must still call AuditService.log_action for audit-required endpoints"
+    )
+    for ep in audit_endpoints:
+        assert ep.name in content, (
+            f"Audit-required endpoint '{ep.name}' must appear in endpoints.py"
+        )
+
+
+def test_role_protected_endpoints_still_include_role_guard_after_refactor(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert 'require_roles(["admin"])' in content, (
+        "Admin-only endpoints must still include require_roles after service stub refactor"
+    )
+
+
+def test_blueprint_service_has_no_forbidden_domain(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/services/blueprint_service.py").read_text().lower()
+    for domain in FORBIDDEN_DOMAINS:
+        assert domain not in content, (
+            f"Forbidden domain keyword '{domain}' found in blueprint_service.py"
+        )

@@ -25,6 +25,10 @@ from app.services.blueprint_service import (
     BlueprintService,
     build_placeholder_blueprint,
     _to_slug,
+    _extract_headings,
+    _heading_to_safe_key,
+    _derive_flows_from_headings,
+    _derive_test_stubs_from_headings,
 )
 from app.services.project_service import ProjectService
 from app.services.validation_service import BlueprintValidationService
@@ -159,6 +163,146 @@ def test_placeholder_blueprint_is_deterministic() -> None:
     bp1 = build_placeholder_blueprint("Stable Project")
     bp2 = build_placeholder_blueprint("Stable Project")
     assert bp1.model_dump() == bp2.model_dump()
+
+
+def test_placeholder_blueprint_is_deterministic_with_document() -> None:
+    content = "# Section One\n\nSome text.\n\n## Section Two\n\nMore text."
+    bp1 = build_placeholder_blueprint("Stable", "Doc Title", content)
+    bp2 = build_placeholder_blueprint("Stable", "Doc Title", content)
+    assert bp1.model_dump() == bp2.model_dump()
+
+
+# ── Document-derived content unit tests ──────────────────────────────────────
+
+
+def test_extract_headings_returns_h1_and_h2() -> None:
+    content = "# First\n\nParagraph.\n\n## Second\n\n### Third"
+    assert _extract_headings(content) == ["First", "Second", "Third"]
+
+
+def test_extract_headings_ignores_non_heading_lines() -> None:
+    content = "Normal line\n# Heading\nAnother normal line"
+    assert _extract_headings(content) == ["Heading"]
+
+
+def test_extract_headings_empty_content_returns_empty() -> None:
+    assert _extract_headings("") == []
+
+
+def test_heading_to_safe_key_produces_valid_identifier() -> None:
+    import re
+    for heading in ["User Management", "Resource Tracking", "123 Numbers", "!Special chars!"]:
+        key = _heading_to_safe_key(heading)
+        assert re.match(r"^[a-z_][a-z0-9_]*$", key), (
+            f"'{heading}' produced invalid key: '{key}'"
+        )
+
+
+def test_heading_to_safe_key_lowercases_and_replaces_spaces() -> None:
+    assert _heading_to_safe_key("User Management") == "user_management"
+
+
+def test_derive_flows_produces_one_flow_per_unique_heading() -> None:
+    flows = _derive_flows_from_headings(["Feature A", "Feature B", "Feature A"])
+    assert len(flows) == 2
+    keys = {f.key for f in flows}
+    assert len(keys) == 2
+
+
+def test_derive_flows_caps_at_five() -> None:
+    headings = [f"Section {i}" for i in range(10)]
+    flows = _derive_flows_from_headings(headings)
+    assert len(flows) == 5
+
+
+def test_derive_flows_flow_keys_are_valid() -> None:
+    import re
+    flows = _derive_flows_from_headings(["User Setup", "Data Import", "Reporting"])
+    for flow in flows:
+        assert re.match(r"^[a-z_][a-z0-9_]*$", flow.key), (
+            f"Invalid flow key: '{flow.key}'"
+        )
+
+
+def test_derive_test_stubs_caps_at_five() -> None:
+    headings = [f"Heading {i}" for i in range(10)]
+    stubs = _derive_test_stubs_from_headings(headings)
+    assert len(stubs) == 5
+
+
+def test_derive_test_stubs_deduplicates() -> None:
+    stubs = _derive_test_stubs_from_headings(["User", "User", "Admin"])
+    assert len(stubs) == 2
+
+
+def test_placeholder_blueprint_with_document_title_in_role_descriptions() -> None:
+    bp = build_placeholder_blueprint("My Platform", "Design Spec v1", "# Intro\n\nText.")
+    for role in bp.roles:
+        assert "Design Spec v1" in role.description, (
+            f"Document title not found in role '{role.key}' description: {role.description!r}"
+        )
+
+
+def test_placeholder_blueprint_with_document_headings_creates_flows() -> None:
+    content = "# User Management\n\n## Resource Tracking\n\nDetails."
+    bp = build_placeholder_blueprint("Test", "Spec", content)
+    assert len(bp.flows) == 2
+    flow_names = {f.name for f in bp.flows}
+    assert "User Management" in flow_names
+    assert "Resource Tracking" in flow_names
+
+
+def test_placeholder_blueprint_with_document_headings_creates_test_stubs() -> None:
+    content = "# Feature A\n\n# Feature B\n"
+    bp = build_placeholder_blueprint("Test", "Spec", content)
+    stubs = bp.testing.test_stubs
+    assert any("feature_a" in s for s in stubs), f"Expected feature_a stub in {stubs}"
+    assert any("feature_b" in s for s in stubs), f"Expected feature_b stub in {stubs}"
+
+
+def test_placeholder_blueprint_empty_document_content_still_valid() -> None:
+    bp = build_placeholder_blueprint("Test Project", "Empty Spec", "")
+    result = BlueprintValidationService().validate(bp)
+    assert result.is_valid, f"Blueprint with empty content failed: {result.errors}"
+    assert bp.flows == []
+    assert bp.testing.test_stubs == []
+
+
+def test_placeholder_blueprint_no_document_args_same_as_before() -> None:
+    """No-arg backward-compatible call still produces a valid, deterministic blueprint."""
+    bp = build_placeholder_blueprint("Backward Compat")
+    assert bp.roles[0].description != ""  # description is now always set
+    result = BlueprintValidationService().validate(bp)
+    assert result.is_valid
+
+
+def test_placeholder_blueprint_different_content_produces_different_output() -> None:
+    bp_a = build_placeholder_blueprint(
+        "Platform", "Spec A", "# User Management\n\nDetails."
+    )
+    bp_b = build_placeholder_blueprint(
+        "Platform", "Spec B", "# Resource Tracking\n\nDetails."
+    )
+    assert bp_a.model_dump() != bp_b.model_dump(), (
+        "Different document content must produce different Blueprint placeholders"
+    )
+
+
+def test_placeholder_blueprint_different_title_produces_different_roles() -> None:
+    bp_a = build_placeholder_blueprint("Platform", "Alpha Spec", "")
+    bp_b = build_placeholder_blueprint("Platform", "Beta Spec", "")
+    role_descs_a = [r.description for r in bp_a.roles]
+    role_descs_b = [r.description for r in bp_b.roles]
+    assert role_descs_a != role_descs_b, (
+        "Different document titles must produce different role descriptions"
+    )
+
+
+def test_placeholder_blueprint_with_document_still_passes_validation() -> None:
+    content = "# Authentication\n\n## User Roles\n\n## API Design\n\nDetails."
+    bp = build_placeholder_blueprint("Auth Platform", "Auth Spec", content)
+    result = BlueprintValidationService().validate(bp)
+    assert result.is_valid, f"Document-derived Blueprint failed validation: {result.errors}"
 
 
 # ── YAML fixture smoke tests ──────────────────────────────────────────────────
@@ -376,3 +520,150 @@ async def test_implementation_allowed_after_generate_and_validate(
     assert await _get_project_status(client, project_id) == "BLUEPRINT_VALIDATED"
     resp = await client.post(f"/projects/{project_id}/generate")
     assert resp.status_code == 201
+
+
+# ── Document-derived Blueprint content (integration) ─────────────────────────
+
+
+async def _create_document_with_content(
+    client: AsyncClient, project_id: str, title: str, content: str
+) -> str:
+    resp = await client.post(
+        f"/projects/{project_id}/documents",
+        json={"title": title, "content": content},
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+async def test_generate_blueprint_includes_document_title_in_role_descriptions(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    """The generated placeholder Blueprint must embed the source document title."""
+    project_id = await _create_project(client, "Doc Derived Test")
+    await _create_document_with_content(
+        client, project_id,
+        title="Platform Design Spec",
+        content="# Overview\n\nThis platform manages resources.",
+    )
+    await _fast_track_to_document_approved(project_service, project_id)
+
+    resp = await client.post(f"/projects/{project_id}/blueprint/generate")
+    assert resp.status_code == 201
+
+    roles = resp.json()["blueprint"]["roles"]
+    for role in roles:
+        assert "Platform Design Spec" in role["description"], (
+            f"Document title not found in role '{role['key']}' description: {role['description']!r}"
+        )
+
+
+async def test_generate_blueprint_includes_document_headings_as_flows(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    """Section headings from the document appear as suggested flows in the Blueprint."""
+    project_id = await _create_project(client, "Flow Derive Test")
+    await _create_document_with_content(
+        client, project_id,
+        title="Feature Spec",
+        content="# User Registration\n\n## Resource Management\n\nDetails here.",
+    )
+    await _fast_track_to_document_approved(project_service, project_id)
+
+    resp = await client.post(f"/projects/{project_id}/blueprint/generate")
+    assert resp.status_code == 201
+
+    flows = resp.json()["blueprint"]["flows"]
+    flow_names = {f["name"] for f in flows}
+    assert "User Registration" in flow_names, (
+        f"Expected 'User Registration' flow from document heading; got: {flow_names}"
+    )
+    assert "Resource Management" in flow_names, (
+        f"Expected 'Resource Management' flow from document heading; got: {flow_names}"
+    )
+
+
+async def test_generate_blueprint_includes_document_headings_as_test_stubs(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    project_id = await _create_project(client, "Stub Derive Test")
+    await _create_document_with_content(
+        client, project_id,
+        title="Stub Spec",
+        content="# Authentication\n\n# Authorization\n\nDetails.",
+    )
+    await _fast_track_to_document_approved(project_service, project_id)
+
+    resp = await client.post(f"/projects/{project_id}/blueprint/generate")
+    assert resp.status_code == 201
+
+    stubs = resp.json()["blueprint"]["testing"]["test_stubs"]
+    assert any("authentication" in s for s in stubs), (
+        f"Expected authentication test stub; got: {stubs}"
+    )
+
+
+async def test_generate_blueprint_different_docs_produce_different_blueprints(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    """Different approved document contents must produce meaningfully different Blueprint placeholders."""
+    # Project A: analytics platform
+    pid_a = await _create_project(client, "Analytics Platform")
+    await _create_document_with_content(
+        client, pid_a,
+        title="Analytics Spec",
+        content="# Dashboard Analytics\n\n## Report Generation\n\nGenerate reports.",
+    )
+    await _fast_track_to_document_approved(project_service, pid_a)
+    resp_a = await client.post(f"/projects/{pid_a}/blueprint/generate")
+    assert resp_a.status_code == 201
+
+    # Project B: booking platform
+    pid_b = await _create_project(client, "Booking Platform")
+    await _create_document_with_content(
+        client, pid_b,
+        title="Booking Spec",
+        content="# Reservation Flow\n\n## Calendar Integration\n\nManage bookings.",
+    )
+    await _fast_track_to_document_approved(project_service, pid_b)
+    resp_b = await client.post(f"/projects/{pid_b}/blueprint/generate")
+    assert resp_b.status_code == 201
+
+    bp_a = resp_a.json()["blueprint"]
+    bp_b = resp_b.json()["blueprint"]
+
+    # Role descriptions must differ (document title embedded)
+    roles_a = {r["key"]: r["description"] for r in bp_a["roles"]}
+    roles_b = {r["key"]: r["description"] for r in bp_b["roles"]}
+    assert roles_a != roles_b, "Role descriptions must differ when document titles differ"
+
+    # Flows must differ (section headings differ)
+    flow_names_a = {f["name"] for f in bp_a["flows"]}
+    flow_names_b = {f["name"] for f in bp_b["flows"]}
+    assert flow_names_a != flow_names_b, (
+        "Flows must differ when document section headings differ"
+    )
+
+
+async def test_generate_blueprint_document_derived_content_passes_validation(
+    client: AsyncClient, project_service: ProjectService
+) -> None:
+    """Blueprint generated from document with multiple headings must pass Blueprint validation."""
+    project_id = await _create_project(client, "Complex Platform")
+    await _create_document_with_content(
+        client, project_id,
+        title="Complex Platform Spec",
+        content=(
+            "# User Authentication\n\n## Role Management\n\n"
+            "## API Design\n\n# Deployment Notes\n\nExtra content."
+        ),
+    )
+    await _fast_track_to_document_approved(project_service, project_id)
+    await client.post(f"/projects/{project_id}/blueprint/generate")
+
+    resp = await client.post(f"/projects/{project_id}/blueprint/validate")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_valid"] is True, (
+        f"Document-derived Blueprint failed validation: {data['errors']}"
+    )
