@@ -1,0 +1,215 @@
+blueprint_version: "1.0"
+
+project:
+  name: "Simple Member Platform"
+  slug: "simple-member-platform"
+  platform: "bale"
+  backend: "fastapi"
+  frontend: "miniapp_panel"
+  generation_mode: "documentation_first"
+
+workflow:
+  documentation_required: true
+  human_approval_required: true
+  document_status: "DOCUMENT_APPROVED"
+  implementation_starts_after: "BLUEPRINT_VALIDATED"
+
+actors:
+  - key: "member"
+    name: "Member"
+    type: "user"
+
+roles:
+  - key: "member"
+    title: "Member"
+    is_admin: false
+
+permissions:
+  - key: "view_content"
+    description: "View content"
+    roles: ["member"]
+
+bots:
+  - key: "user_bot"
+    title: "Member Bot"
+    audience: "users"
+    token_env: "USER_BOT_TOKEN"
+    webhook_path: "/webhook/user"
+    allowed_roles: ["member"]
+    commands:
+      - command: "/start"
+        description: "Start the bot"
+        handler: "handle_start"
+        allowed_roles: ["member"]
+    security_policy:
+      require_registered_user: true
+      audit_sensitive_callbacks: false
+
+miniapp:
+  enabled: true
+  auth_endpoint: "/auth/bale-miniapp"
+  routes:
+    - path: "/dashboard"
+      allowed_roles: ["member"]
+      page_type: "dashboard"
+
+backend:
+  framework: "fastapi"
+  python_version: "3.12"
+  async_mode: true
+
+database:
+  entities:
+    - name: "users"
+      table_name: "users"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "roles"
+      table_name: "roles"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "permissions"
+      table_name: "permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "user_roles"
+      table_name: "user_roles"
+      fields:
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "role_permissions"
+      table_name: "role_permissions"
+      fields:
+        - name: "role_id"
+          type: "uuid"
+          nullable: false
+        - name: "permission_id"
+          type: "uuid"
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "bale_accounts"
+      table_name: "bale_accounts"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "bale_user_id"
+          type: "string"
+          nullable: false
+        - name: "user_id"
+          type: "uuid"
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "bots"
+      table_name: "bots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "bot_conversations"
+      table_name: "bot_conversations"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "processed_updates"
+      table_name: "processed_updates"
+      fields:
+        - name: "update_id"
+          type: "string"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "audit_logs"
+      table_name: "audit_logs"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+        - name: "action"
+          type: "string"
+          nullable: false
+        - name: "timestamp"
+          type: "datetime"
+          nullable: false
+        - name: "source"
+          type: "string"
+          nullable: false
+      indexes: []
+      audit: false
+    - name: "app_settings"
+      table_name: "app_settings"
+      fields:
+        - name: "key"
+          type: "string"
+          primary_key: true
+          nullable: false
+      indexes: []
+      audit: false
+
+flows: []
+
+api:
+  endpoints:
+    - name: "bale_miniapp_auth"
+      method: "POST"
+      path: "/auth/bale-miniapp"
+      auth_required: false
+      allowed_roles: []
+      request_schema: "BaleInitData"
+      response_schema: "AuthToken"
+      service_method: "auth_service.verify_miniapp_token"
+      audit_required: false
+
+security:
+  miniapp_hmac_validation: true
+  jwt_enabled: true
+  bot_webhook_secret: true
+  audit_log_enabled: true
+  rbac_enabled: true
+
+testing:
+  test_framework: "pytest"
+  coverage_target: 80
+  test_stubs:
+    - "test_unregistered_user_is_rejected"
+
+generation:
+  template_profile: "fastapi_react_bale_v1"
+  enabled_modules:
+    - "rbac"
+    - "audit_log"
+    - "bale_client"
+    - "miniapp_auth"

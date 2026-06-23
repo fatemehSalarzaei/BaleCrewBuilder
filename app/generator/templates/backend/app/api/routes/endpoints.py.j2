@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db, require_roles
+from app.services.audit_service import AuditService
 
 router = APIRouter()
 {% for endpoint in api_endpoints %}
@@ -13,6 +14,17 @@ router = APIRouter()
 {% set _ = sig_parts.append(p ~ ": str") %}
 {% endfor %}
 {% if endpoint.auth_required %}
+{% set _ = sig_parts.append("current_user: Annotated[dict, Depends(get_current_user)]") %}
+{% endif %}
+{% if endpoint.allowed_roles %}
+{% set roles_items = [] %}
+{% for r in endpoint.allowed_roles %}
+{% set _ = roles_items.append('"' ~ r ~ '"') %}
+{% endfor %}
+{% set roles_repr = "[" ~ (roles_items | join(", ")) ~ "]" %}
+{% set _ = sig_parts.append("_rbac: Annotated[None, Depends(require_roles(" ~ roles_repr ~ "))]") %}
+{% endif %}
+{% if endpoint.auth_required or endpoint.allowed_roles %}
 {% set _ = sig_parts.append("db: AsyncSession = Depends(get_db)") %}
 {% endif %}
 {% set audit_note = " | audit=True" if endpoint.audit_required else "" %}
@@ -21,5 +33,8 @@ router = APIRouter()
 @router.{{ endpoint.method | lower }}("{{ endpoint.path }}")
 async def {{ endpoint.name }}({{ sig_parts | join(", ") }}) -> Any:
     # Blueprint: {{ endpoint.name }} | service: {{ endpoint.service_method }}{{ audit_note }}
+{% if endpoint.audit_required and endpoint.auth_required %}
+    AuditService.log_action(current_user, "{{ endpoint.name }}")
+{% endif %}
     raise NotImplementedError
 {% endfor %}

@@ -1,10 +1,45 @@
 from collections.abc import AsyncGenerator
+from typing import Annotated, Any
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import decode_access_token
 from app.db.session import async_session_factory
+
+_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
+
+
+async def get_current_user(
+    token: Annotated[str, Depends(_oauth2_scheme)],
+) -> dict[str, Any]:
+    payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
+
+
+def require_roles(roles: list[str]):
+    """Return a FastAPI dependency that enforces role membership."""
+
+    async def _check(
+        current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    ) -> None:
+        user_roles: list[str] = current_user.get("roles", [])
+        if not any(r in user_roles for r in roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Required roles: {roles}",
+            )
+
+    return _check

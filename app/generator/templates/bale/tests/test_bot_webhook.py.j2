@@ -1,0 +1,73 @@
+"""Test stubs for {{ bot.title }} webhook.
+
+Blueprint metadata:
+  webhook_path: {{ bot.webhook_path }}
+  audience:     {{ bot.audience }}
+  token_env:    {{ bot.token_env }}
+
+Implement each stub to enforce webhook security, idempotency, and
+role-based access control for this bot.
+"""
+import pytest
+
+
+class Test{{ bot_class_name }}Webhook:
+    """Webhook handler tests for {{ bot.title }}."""
+
+    def test_valid_update_returns_ok(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a well-formed update body
+        # Assert response {"ok": True} and status 200
+        raise NotImplementedError
+
+    def test_duplicate_update_is_ignored(self) -> None:
+        # TODO: POST the same update_id twice
+        # Assert second call still returns {"ok": True} without reprocessing
+        raise NotImplementedError
+{% if security.bot_webhook_secret %}
+
+    def test_missing_signature_returns_401(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} without X-Bale-Signature header
+        # Assert 401 Unauthorized
+        raise NotImplementedError
+
+    def test_invalid_signature_returns_401(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a tampered/wrong X-Bale-Signature
+        # Assert 401 Unauthorized
+        raise NotImplementedError
+{% endif %}
+{% if bot.audience == "users" and bot.security_policy.require_registered_user %}
+
+    def test_unregistered_user_is_rejected(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a sender whose bale_user_id is not in users table
+        # Assert the message is silently ignored (no error, no handler called)
+        raise NotImplementedError
+{% endif %}
+{% if bot.audience == "admins" %}
+
+    def test_non_admin_sender_is_rejected(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a message from a non-admin sender
+        # Assert the update is silently ignored before any command handler is invoked
+        raise NotImplementedError
+{% if bot.security_policy.audit_sensitive_callbacks %}
+
+    def test_admin_command_writes_audit_log(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a valid admin command
+        # Assert AuditService.log_action() is called with the correct action name
+        raise NotImplementedError
+{% endif %}
+{% endif %}
+{% for cmd in bot.commands %}
+
+    def test_{{ cmd.handler }}_handler_is_dispatched(self) -> None:
+        # TODO: POST {{ bot.webhook_path }} with a message containing "{{ cmd.command }}"
+        # Assert {{ cmd.handler }} is invoked (mock the handler or check side-effects)
+        raise NotImplementedError
+{% endfor %}
+{% for stub in testing.test_stubs %}
+{% if bot.key in stub %}
+
+    def test_{{ stub }}(self) -> None:
+        # Blueprint test stub: {{ stub }}
+        raise NotImplementedError
+{% endif %}
+{% endfor %}

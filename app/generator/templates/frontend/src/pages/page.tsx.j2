@@ -1,0 +1,26 @@
+/**
+ * {{ route.component_name }} — {{ route.page_type }} page for {{ project.name }}.
+ *
+ * Blueprint route: {{ route.path }}
+ * Allowed roles:   {{ route.allowed_roles | join(", ") or "public" }}
+ * Page type:       {{ route.page_type }}
+ * Admin only:      {{ route.is_admin_only }}
+ * API dependencies: {{ route.api_dependencies | join(", ") or "none" }}
+ *
+ * R7: Do not add business logic here. Delegate to backend via API hooks.
+ * Import hooks from: ../hooks/useApi
+ */
+
+export default function {{ route.component_name }}() {
+  return (
+    <div
+      className="{{ route.component_name }}"
+      data-route="{{ route.path }}"
+      data-page-type="{{ route.page_type }}"
+    >
+      <h2>{{ route.page_type | capitalize }}</h2>
+      {/* TODO: implement {{ route.component_name }} content */}
+      {/* Available API hooks in useApi.ts: {{ route.api_dependencies | join(", ") or "none" }} */}
+    </div>
+  );
+}

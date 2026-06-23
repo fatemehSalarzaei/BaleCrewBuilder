@@ -1,0 +1,30 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AdminGuard from "./components/AdminGuard";
+{% for route in routes_with_meta %}
+import {{ route.component_name }} from "./pages/{{ route.component_name }}";
+{% endfor %}
+
+// {{ project.name }} — Blueprint routes: {{ miniapp.routes | length }}
+// Mini App auth endpoint: {{ miniapp.auth_endpoint or "(not configured)" }}
+// Do not add business logic here — use backend services (R7).
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {% for route in routes_with_meta %}
+        {% if route.is_admin_only %}
+        {/* {{ route.path }} — {{ route.page_type }}, admin-only */}
+        <Route path="{{ route.path }}" element={<AdminGuard><{{ route.component_name }} /></AdminGuard>} />
+        {% else %}
+        {/* {{ route.path }} — {{ route.page_type }}, roles: {{ route.allowed_roles | join(", ") or "public" }} */}
+        <Route path="{{ route.path }}" element={<{{ route.component_name }} />} />
+        {% endif %}
+        {% endfor %}
+        <Route path="*" element={<div data-role="not-found">Page not found</div>} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;

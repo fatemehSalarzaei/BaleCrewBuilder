@@ -1,0 +1,33 @@
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.security import create_access_token, verify_password
+
+
+class AuthService:
+    # Roles defined in Blueprint: {{ roles | map(attribute='key') | join(', ') }}
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+
+    async def authenticate(
+        self, username: str, password: str
+    ) -> dict[str, Any] | None:
+        # TODO: load user from DB by username, verify password hash, build token payload
+        # Payload must include at minimum: {"sub": user_id, "roles": [role_key, ...]}
+        raise NotImplementedError
+
+    async def login(self, username: str, password: str) -> str:
+        payload = await self.authenticate(username, password)
+        if payload is None:
+            raise ValueError("Invalid credentials")
+        return create_access_token(payload)
+{% if miniapp.enabled %}
+
+    async def verify_miniapp_token(self, init_data: str) -> dict[str, Any]:
+        # TODO: HMAC-validate Bale Mini App initData
+        # Auth endpoint defined in Blueprint: {{ miniapp.auth_endpoint }}
+        # Reference: https://docs.bale.ai/miniapp/init-data
+        raise NotImplementedError
+{% endif %}

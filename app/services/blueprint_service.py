@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -6,10 +7,170 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.blueprint_validations import BlueprintValidationModel
 from app.db.models.blueprints import BlueprintModel
-from app.schemas.blueprint import BotBlueprint
+from app.schemas.blueprint import (
+    ActorSpec,
+    ApiSpec,
+    BackendSpec,
+    BotAudience,
+    BotCommandSpec,
+    BotSecurityPolicySpec,
+    BotSpec,
+    BotBlueprint,
+    DatabaseSpec,
+    EntityFieldSpec,
+    EntitySpec,
+    GenerationSpec,
+    MiniAppRouteSpec,
+    MiniAppSpec,
+    PageType,
+    PermissionSpec,
+    ProjectSpec,
+    RoleSpec,
+    SecuritySpec,
+    TestingSpec,
+    WorkflowSpec,
+)
 from app.schemas.project import ProjectStatus
 from app.services.project_service import IllegalStatusTransitionError, ProjectService
 from app.services.validation_service import BlueprintValidationService, ValidationResult
+
+
+# ── Placeholder Blueprint builder ─────────────────────────────────────────────
+
+_PLACEHOLDER_CORE_ENTITY_NAMES: list[str] = [
+    "users",
+    "roles",
+    "permissions",
+    "user_roles",
+    "role_permissions",
+    "bale_accounts",
+    "bots",
+    "bot_conversations",
+    "processed_updates",
+    "audit_logs",
+    "app_settings",
+]
+
+
+def _to_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]", "-", name.lower())
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    if not slug or not slug[0].isalpha():
+        slug = "project-" + slug.lstrip("-")
+    return slug[:100] or "project"
+
+
+def build_placeholder_blueprint(project_name: str) -> BotBlueprint:
+    """Return a deterministic, generic placeholder Blueprint from a project name.
+
+    The result passes all BlueprintValidationService rules so it can be stored
+    and immediately validated without manual editing. Domain-specific entities
+    and API endpoints are intentionally omitted — the human reviewer fills them
+    in after Blueprint generation.
+    """
+    slug = _to_slug(project_name)
+
+    core_entities = [
+        EntitySpec(
+            name=entity_name,
+            table_name=entity_name,
+            fields=[
+                EntityFieldSpec(name="id", type="uuid", primary_key=True, nullable=False)
+            ],
+        )
+        for entity_name in _PLACEHOLDER_CORE_ENTITY_NAMES
+    ]
+
+    return BotBlueprint(
+        blueprint_version="1.0",
+        project=ProjectSpec(
+            name=project_name,
+            slug=slug,
+            platform="bale",
+            backend="fastapi",
+            frontend="miniapp_panel",
+            generation_mode="documentation_first",
+        ),
+        workflow=WorkflowSpec(
+            documentation_required=True,
+            human_approval_required=True,
+            document_status="DOCUMENT_APPROVED",
+            implementation_starts_after="BLUEPRINT_VALIDATED",
+        ),
+        actors=[
+            ActorSpec(key="member", name="Member", type="user"),
+            ActorSpec(key="admin_user", name="Administrator", type="admin"),
+        ],
+        roles=[
+            RoleSpec(key="member", title="Member", is_admin=False),
+            RoleSpec(key="admin", title="Administrator", is_admin=True),
+        ],
+        permissions=[
+            PermissionSpec(key="view_data", description="View data", roles=["member", "admin"]),
+            PermissionSpec(key="manage_data", description="Manage data", roles=["admin"]),
+        ],
+        bots=[
+            BotSpec(
+                key="user_bot",
+                title=f"{project_name} Bot",
+                audience=BotAudience.USERS,
+                token_env="USER_BOT_TOKEN",
+                webhook_path="/webhook/user",
+                allowed_roles=["member"],
+                commands=[
+                    BotCommandSpec(
+                        command="/start",
+                        description="Start the bot",
+                        handler="handle_start",
+                        allowed_roles=["member"],
+                    ),
+                ],
+                security_policy=BotSecurityPolicySpec(require_registered_user=True),
+            ),
+            BotSpec(
+                key="admin_bot",
+                title=f"{project_name} Admin Bot",
+                audience=BotAudience.ADMINS,
+                token_env="ADMIN_BOT_TOKEN",
+                webhook_path="/webhook/admin",
+                allowed_roles=["admin"],
+                commands=[
+                    BotCommandSpec(
+                        command="/start",
+                        description="Admin start",
+                        handler="admin_handle_start",
+                        allowed_roles=["admin"],
+                    ),
+                ],
+                security_policy=BotSecurityPolicySpec(require_registered_user=True),
+            ),
+        ],
+        miniapp=MiniAppSpec(
+            enabled=True,
+            auth_endpoint="/auth/bale-miniapp",
+            routes=[
+                MiniAppRouteSpec(
+                    path="/dashboard",
+                    allowed_roles=["member", "admin"],
+                    page_type=PageType.DASHBOARD,
+                ),
+                MiniAppRouteSpec(
+                    path="/admin/dashboard",
+                    allowed_roles=["admin"],
+                    page_type=PageType.DASHBOARD,
+                ),
+            ],
+        ),
+        backend=BackendSpec(framework="fastapi", python_version="3.12", async_mode=True),
+        database=DatabaseSpec(entities=core_entities),
+        api=ApiSpec(endpoints=[]),
+        security=SecuritySpec(),
+        testing=TestingSpec(),
+        generation=GenerationSpec(
+            template_profile="fastapi_react_bale_v1",
+            enabled_modules=["rbac", "audit_log", "bale_client", "miniapp_auth"],
+        ),
+    )
 
 
 class BlueprintNotFoundError(Exception):

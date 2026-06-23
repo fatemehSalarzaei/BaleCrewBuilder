@@ -1,0 +1,80 @@
+/**
+ * Bale Mini App authentication bootstrap for {{ project.name }}.
+ *
+ * Reads the raw initData string provided by Bale WebView and sends it to the
+ * backend auth endpoint ({{ miniapp.auth_endpoint or "/auth/bale-miniapp" }})
+ * for HMAC verification.
+ *
+ * IMPORTANT — The frontend must NOT validate HMAC locally. All initData
+ * verification is performed server-side. Sending initDataUnsafe instead of
+ * initData (raw) is a security error.
+ */
+
+const BALE_AUTH_ENDPOINT = "{{ miniapp.auth_endpoint or "/auth/bale-miniapp" }}";
+
+export interface AuthResult {
+  access_token: string;
+  token_type: string;
+}
+
+declare global {
+  interface Window {
+    Bale?: {
+      WebApp?: {
+        // initData: raw query-string — use this, not initDataUnsafe.
+        initData: string;
+        // initDataUnsafe: pre-parsed object — do NOT trust without backend verification.
+        initDataUnsafe: Record<string, unknown>;
+      };
+    };
+  }
+}
+
+/** Returns true when the page is opened inside Bale WebView. */
+export function isRunningInBale(): boolean {
+  return typeof window !== "undefined" && Boolean(window.Bale?.WebApp?.initData);
+}
+
+/**
+ * Returns the raw initData query-string from Bale WebView, or null if not in Bale.
+ *
+ * Always use the raw initData string — never initDataUnsafe.
+ * HMAC validation happens on the backend, not here.
+ */
+export function getRawInitData(): string | null {
+  return window.Bale?.WebApp?.initData ?? null;
+}
+
+/**
+ * Authenticates the current Bale user by sending raw initData to the backend.
+ *
+ * Flow:
+ *   1. Read raw initData from Bale WebApp (not initDataUnsafe).
+ *   2. POST { init_data: rawInitData } to {{ miniapp.auth_endpoint or "/auth/bale-miniapp" }}.
+ *   3. Backend validates HMAC and returns { access_token, token_type }.
+ *
+ * Throws if initData is not available or if the backend rejects the request.
+ */
+export async function authenticateWithBale(): Promise<AuthResult> {
+  const initData = getRawInitData();
+  if (!initData) {
+    throw new Error(
+      "Bale initData is not available — ensure the app is opened inside Bale WebView."
+    );
+  }
+
+  const response = await fetch(BALE_AUTH_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Send raw initData string. Backend performs HMAC validation (not frontend).
+    body: JSON.stringify({ init_data: initData }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Bale authentication failed: ${response.status} ${response.statusText}`
+    );
+  }
+
+  return response.json() as Promise<AuthResult>;
+}

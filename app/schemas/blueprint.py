@@ -1,5 +1,6 @@
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -226,3 +227,9 @@ class BotBlueprint(BaseModel):
 class ValidationResultRead(BaseModel):
     is_valid: bool
     errors: list[str]
+
+
+class BlueprintGenerateResponse(BaseModel):
+    blueprint: BotBlueprint
+    source_document_id: UUID
+    project_status: str

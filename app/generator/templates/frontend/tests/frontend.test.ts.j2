@@ -1,0 +1,41 @@
+/**
+ * Generated test stubs for {{ project.name }} frontend.
+ *
+ * Run with: npm test  (Vitest)
+ * Blueprint: {{ project.slug }}
+ * Routes: {{ routes_with_meta | length }}
+ * API endpoints: {{ api_endpoints | length }}
+ *
+ * Implement each it.todo() stub before shipping.
+ * R10: tests are mandatory output for every generated module.
+ */
+import { describe, it } from "vitest";
+
+describe("Blueprint routes — {{ project.name }}", () => {
+{% for route in routes_with_meta %}
+  it.todo("{{ route.component_name }} renders at route '{{ route.path }}'");
+  it.todo("{{ route.component_name }} is accessible to roles: {{ route.allowed_roles | join(', ') or 'public' }}");
+{% endfor %}
+});
+
+describe("Admin guard", () => {
+  it.todo("AdminGuard blocks access for non-admin users");
+  it.todo("AdminGuard renders children for authenticated admin users");
+  it.todo("AdminGuard shows access-denied message for missing admin role");
+{% if has_admin_routes %}
+  it.todo("Admin routes are wrapped with AdminGuard in App router");
+{% endif %}
+});
+
+describe("API hooks — {{ project.name }}", () => {
+{% for endpoint in api_endpoints %}
+  it.todo("use{{ endpoint.name | pascal_case }} calls {{ endpoint.method }} {{ endpoint.path }}");
+{% endfor %}
+});
+
+describe("Mini App auth", () => {
+  it.todo("authenticateWithBale POSTs raw initData to '{{ miniapp.auth_endpoint or '/auth/bale-miniapp' }}'");
+  it.todo("getRawInitData returns initData string, never initDataUnsafe");
+  it.todo("isRunningInBale returns true inside Bale WebView");
+  it.todo("Frontend never validates HMAC — backend is sole validator");
+});

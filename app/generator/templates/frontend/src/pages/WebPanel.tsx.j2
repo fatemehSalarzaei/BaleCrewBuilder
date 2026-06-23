@@ -1,0 +1,75 @@
+/**
+ * WebPanel — shared page shell for {{ project.name }}.
+ *
+ * R6: The same frontend must work both inside Bale WebView (Mini App mode)
+ * and as a standalone web panel. This component handles both entry points.
+ *
+ * - Inside Bale WebView: authenticates via raw initData → backend HMAC check.
+ * - Outside Bale WebView: falls into web panel mode (TODO: implement login).
+ *
+ * Replace the placeholder content with real page components per route.
+ */
+import { useEffect, useState } from "react";
+import { isRunningInBale, authenticateWithBale } from "../lib/bale-miniapp-auth";
+import { setAccessToken } from "../lib/api-client";
+
+interface WebPanelProps {
+  routePath: string;
+}
+
+type AuthState = "pending" | "authenticated" | "error";
+
+export default function WebPanel({ routePath }: WebPanelProps) {
+  const [authState, setAuthState] = useState<AuthState>("pending");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isRunningInBale()) {
+      authenticateWithBale()
+        .then((result) => {
+          setAccessToken(result.access_token);
+          setAuthState("authenticated");
+        })
+        .catch((err: Error) => {
+          setErrorMessage(err.message);
+          setAuthState("error");
+        });
+    } else {
+      // Web panel mode — opened outside Bale WebView.
+      // TODO: implement alternative authentication (e.g. username/password login form).
+      setAuthState("pending");
+    }
+  }, []);
+
+  if (authState === "error") {
+    return (
+      <div className="error-panel">
+        <h2>Authentication Error</h2>
+        <p>{errorMessage}</p>
+      </div>
+    );
+  }
+
+  if (authState === "pending") {
+    return (
+      <div className="loading-panel">
+        <p>Loading {{ project.name }}…</p>
+        <p>Route: {routePath}</p>
+        {/* Web panel mode: TODO implement login form or session restore */}
+      </div>
+    );
+  }
+
+  // Authenticated state — replace with real page content per route.
+  return (
+    <div className="web-panel">
+      <header>
+        <h1>{{ project.name }}</h1>
+      </header>
+      <main>
+        <p>Route: {routePath}</p>
+        {/* TODO: render page content for {routePath} */}
+      </main>
+    </div>
+  );
+}

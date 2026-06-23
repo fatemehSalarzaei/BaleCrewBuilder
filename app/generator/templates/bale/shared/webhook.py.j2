@@ -1,0 +1,40 @@
+"""Shared Bale webhook utilities — signature verification and update parsing.
+
+All bot webhook handlers use these helpers to validate incoming requests
+from the Bale platform before processing any update data.
+"""
+import hashlib
+import hmac
+from typing import Any
+
+
+class WebhookVerificationError(ValueError):
+    """Raised when a Bale webhook HMAC signature cannot be verified."""
+
+
+def verify_webhook_signature(
+    secret: str,
+    raw_body: bytes,
+    provided_signature: str,
+) -> None:
+    """Verify a Bale webhook HMAC-SHA256 signature.
+
+    Raises WebhookVerificationError when the computed digest does not match
+    the provided_signature. Use hmac.compare_digest to prevent timing attacks.
+    """
+    expected = hmac.new(
+        key=secret.encode(),
+        msg=raw_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, provided_signature):
+        raise WebhookVerificationError("Webhook signature mismatch")
+
+
+def parse_update(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalise a raw Bale webhook update.
+
+    This is a pass-through stub; enrich with typed dataclasses as needed.
+    The raw dict is returned unchanged so callers can begin using it immediately.
+    """
+    return raw

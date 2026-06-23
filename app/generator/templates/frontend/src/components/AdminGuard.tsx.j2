@@ -1,0 +1,54 @@
+/**
+ * AdminGuard — restricts access to admin-only routes for {{ project.name }}.
+ *
+ * Blueprint admin roles: {{ admin_role_keys | join(", ") }}
+ *
+ * Renders children only when the authenticated user holds an admin role.
+ * Non-admin users receive an access-denied message.
+ *
+ * TODO: replace the stub role check with real JWT decode + backend RBAC call.
+ * Business logic must stay in the backend (R7) — do not encode permissions here.
+ */
+import { useState, useEffect, type ReactNode } from "react";
+
+interface AdminGuardProps {
+  children: ReactNode;
+}
+
+/**
+ * Stub admin-role check.
+ * TODO: decode the JWT from localStorage, extract the role claim, and verify
+ * it matches one of the Blueprint admin roles: {{ admin_role_keys | join(", ") }}.
+ */
+function hasAdminRole(): boolean {
+  return false;
+}
+
+export default function AdminGuard({ children }: AdminGuardProps) {
+  const [permitted, setPermitted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // TODO: replace with async backend role verification.
+    setPermitted(hasAdminRole());
+  }, []);
+
+  if (permitted === null) {
+    return (
+      <div className="guard-checking" aria-live="polite">
+        Checking permissions…
+      </div>
+    );
+  }
+
+  if (!permitted) {
+    return (
+      <div className="access-denied" role="alert" aria-live="assertive">
+        <h2>Access Denied</h2>
+        <p>Admin access is required to view this page.</p>
+        {/* Blueprint admin roles required: {{ admin_role_keys | join(", ") }} */}
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}

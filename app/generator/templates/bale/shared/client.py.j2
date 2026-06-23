@@ -1,0 +1,77 @@
+"""Shared Bale HTTP API client — thin httpx.AsyncClient wrapper.
+
+Each bot has its own factory function to isolate tokens.
+Token values are loaded from environment variables at call time;
+tokens are never stored in code (R8 — no hardcoded tokens).
+
+Bots in this project:
+{% for bot in bots %}
+  {{ bot.key }}: token_env={{ bot.token_env }}, webhook={{ bot.webhook_path }}
+{% endfor %}
+"""
+import os
+from typing import Any
+
+import httpx
+
+_BALE_API_BASE = "https://tapi.bale.ai/bot{token}"
+
+
+class BaleClient:
+    """Async httpx wrapper around the Bale Bot HTTP API.
+
+    Instantiate via a per-bot factory function rather than directly,
+    so token isolation is enforced at the call site.
+    """
+
+    def __init__(self, token: str) -> None:
+        self._base_url = _BALE_API_BASE.format(token=token)
+
+    async def _request(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{self._base_url}/{method}", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def send_message(
+        self, chat_id: str | int, text: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        return await self._request("sendMessage", {"chat_id": chat_id, "text": text, **kwargs})
+
+    async def send_photo(
+        self, chat_id: str | int, photo: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        return await self._request("sendPhoto", {"chat_id": chat_id, "photo": photo, **kwargs})
+
+    async def answer_callback_query(
+        self, callback_query_id: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        return await self._request(
+            "answerCallbackQuery",
+            {"callback_query_id": callback_query_id, **kwargs},
+        )
+
+    async def set_webhook(self, url: str, secret_token: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"url": url}
+        if secret_token is not None:
+            payload["secret_token"] = secret_token
+        return await self._request("setWebhook", payload)
+
+    async def delete_webhook(self) -> dict[str, Any]:
+        return await self._request("deleteWebhook", {})
+
+    async def get_me(self) -> dict[str, Any]:
+        return await self._request("getMe", {})
+
+
+def _make_client(token_env: str) -> "BaleClient":
+    """Create a BaleClient by reading a token from an environment variable."""
+    token = os.environ[token_env]
+    return BaleClient(token)
+{% for bot in bots %}
+
+
+def make_{{ bot.key }}_client() -> BaleClient:
+    """Create the {{ bot.title }} client (token from env {{ bot.token_env }})."""
+    return _make_client("{{ bot.token_env }}")
+{% endfor %}

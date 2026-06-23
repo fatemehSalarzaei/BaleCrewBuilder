@@ -15,10 +15,13 @@ FORBIDDEN_DOMAINS = {"ticket", "appointment", "crm", "support_ticket"}
 _CORE_BACKEND_FILES = [
     "backend/app/main.py",
     "backend/app/core/config.py",
+    "backend/app/core/security.py",
     "backend/app/db/base.py",
     "backend/app/db/session.py",
     "backend/app/api/deps.py",
     "backend/app/api/router.py",
+    "backend/app/services/auth_service.py",
+    "backend/app/services/audit_service.py",
 ]
 
 _CORE_INIT_FILES = [
@@ -357,3 +360,150 @@ def test_no_pk_entity_model_uses_composite_primary_key(tmp_path: Path) -> None:
         assert "Association table" in content, (
             f"No-PK entity '{entity.name}' model should have association table comment"
         )
+
+
+# ── Phase 5: Auth / RBAC / Audit skeleton generation ─────────────────────────
+
+
+def test_security_file_is_generated(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+    assert "backend/app/core/security.py" in generated
+    assert (output_dir / "backend/app/core/security.py").exists()
+
+
+def test_auth_service_file_is_generated(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+    assert "backend/app/services/auth_service.py" in generated
+    assert (output_dir / "backend/app/services/auth_service.py").exists()
+
+
+def test_audit_service_file_is_generated(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+    assert "backend/app/services/audit_service.py" in generated
+    assert (output_dir / "backend/app/services/audit_service.py").exists()
+
+
+def test_security_file_has_required_functions(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/core/security.py").read_text()
+    for fn in ("verify_password", "get_password_hash", "create_access_token", "decode_access_token"):
+        assert fn in content, f"security.py missing function: {fn}"
+
+
+def test_deps_has_get_current_user(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/deps.py").read_text()
+    assert "get_current_user" in content
+
+
+def test_deps_has_require_roles(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/deps.py").read_text()
+    assert "require_roles" in content
+
+
+def test_deps_has_oauth2_bearer(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/deps.py").read_text()
+    assert "OAuth2PasswordBearer" in content
+
+
+def test_admin_endpoints_include_role_guard(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert 'require_roles(["admin"])' in content
+
+
+def test_auth_endpoints_include_get_current_user(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "Depends(get_current_user)" in content
+
+
+def test_audit_endpoints_call_audit_service(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "AuditService.log_action" in content
+
+
+def test_audit_call_includes_current_user(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert "AuditService.log_action(current_user," in content
+
+
+def test_miniapp_auth_endpoint_exists_in_endpoints(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    miniapp_path = blueprint.miniapp.auth_endpoint
+    assert miniapp_path, "Fixture must define miniapp.auth_endpoint"
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    assert miniapp_path in content, (
+        f"miniapp.auth_endpoint '{miniapp_path}' not found in endpoints.py"
+    )
+
+
+def test_unauthenticated_endpoints_have_no_current_user(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/api/routes/endpoints.py").read_text()
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        if "async def health_check(" in line or "async def bale_miniapp_auth(" in line:
+            assert "get_current_user" not in line, (
+                f"Unauthenticated endpoint at line {i + 1} must not have get_current_user"
+            )
+
+
+def test_auth_service_has_authenticate_and_login(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/services/auth_service.py").read_text()
+    assert "async def authenticate" in content
+    assert "async def login" in content
+
+
+def test_auth_service_mentions_blueprint_roles(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/services/auth_service.py").read_text()
+    for role in blueprint.roles:
+        assert role.key in content, (
+            f"auth_service.py should reference Blueprint role '{role.key}'"
+        )
+
+
+def test_auth_service_has_miniapp_method_when_enabled(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    assert blueprint.miniapp.enabled, "Fixture must have miniapp.enabled=True"
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/services/auth_service.py").read_text()
+    assert "verify_miniapp_token" in content
+
+
+def test_audit_service_has_log_action_method(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+    content = (output_dir / "backend/app/services/audit_service.py").read_text()
+    assert "def log_action" in content
+
+
+def test_audit_service_full_stub_when_audit_enabled(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    assert blueprint.security.audit_log_enabled, "Fixture must have security.audit_log_enabled=True"
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/services/audit_service.py").read_text()
+    assert "resource_type" in content, "Full audit stub should include resource_type param"

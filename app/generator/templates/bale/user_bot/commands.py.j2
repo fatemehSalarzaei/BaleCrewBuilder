@@ -1,0 +1,52 @@
+"""{{ bot.title }} — User Bot command dispatcher.
+
+Commands defined in Blueprint:
+{% for cmd in bot.commands %}
+  {{ cmd.command }} → {{ cmd.handler }} (roles: {{ cmd.allowed_roles | join(', ') or 'any' }})
+{% endfor %}
+
+Users must be registered before their commands are processed.
+Business logic belongs in backend services (R7).
+"""
+from typing import Any
+
+
+async def _check_registered_user(update: dict[str, Any]) -> bool:
+    """Verify that the sender is a registered platform user.
+
+    TODO: query the backend user service by Bale sender ID.
+    Never trust the Bale sender ID alone without a database lookup.
+    Returns True if the user is registered, False otherwise.
+    """
+    return True  # stub — replace with actual service call
+
+
+async def dispatch(update: dict[str, Any]) -> None:
+    """Route an incoming update to the appropriate command handler.
+
+    Enforces registration check per Blueprint security_policy before routing.
+    """
+{% if bot.security_policy.require_registered_user %}
+    if not await _check_registered_user(update):
+        # TODO: send a registration prompt reply via BaleClient
+        return
+{% endif %}
+    message = update.get("message") or {}
+    text: str = message.get("text") or ""
+{% for cmd in bot.commands %}
+    if text.startswith("{{ cmd.command }}"):
+        await {{ cmd.handler }}(update)
+        return
+{% endfor %}
+    # No matching command — ignore silently
+{% for cmd in bot.commands %}
+
+
+async def {{ cmd.handler }}(update: dict[str, Any]) -> None:
+    """{{ cmd.command }} handler. Allowed roles: {{ cmd.allowed_roles | join(', ') or 'any' }}.
+
+    TODO: call the appropriate backend service method here.
+    Do not implement business logic in this handler (R7).
+    """
+    raise NotImplementedError
+{% endfor %}

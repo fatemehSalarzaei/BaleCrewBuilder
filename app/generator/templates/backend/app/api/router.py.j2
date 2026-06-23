@@ -4,9 +4,15 @@ from app.api.routes.endpoints import router as blueprint_endpoints_router
 {% for entity in entities %}
 from app.api.routes.{{ entity.name }} import router as {{ entity.name }}_router
 {% endfor %}
+{% for bot in bots %}
+from bale.{{ bot.key }}.webhook import router as {{ bot.key }}_webhook_router
+{% endfor %}
 
 api_router = APIRouter()
 api_router.include_router(blueprint_endpoints_router, tags=["blueprint-endpoints"])
 {% for entity in entities %}
 api_router.include_router({{ entity.name }}_router, prefix="/{{ entity.name }}", tags=["{{ entity.name }}"])
+{% endfor %}
+{% for bot in bots %}
+api_router.include_router({{ bot.key }}_webhook_router, tags=["{{ bot.key }}-webhook"])
 {% endfor %}

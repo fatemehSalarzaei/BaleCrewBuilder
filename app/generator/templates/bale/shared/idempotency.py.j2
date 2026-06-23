@@ -1,0 +1,51 @@
+"""Shared idempotency helpers — prevent duplicate Bale update processing.
+
+Uses the `processed_updates` table (a required core entity) to ensure each
+Bale update_id is processed at most once per bot, even if the Bale platform
+delivers the same webhook payload more than once.
+
+Flow (enforced in each bot's webhook.py):
+  1. Extract update_id from the incoming update.
+  2. Call is_duplicate_update() — return {"ok": True} immediately if True.
+  3. Call dispatch() to process the update.
+  4. Call mark_update_processed() after successful dispatch.
+
+Table: processed_updates
+  update_id    (string PK)
+  bot_key      (string)
+  processed_at (datetime)
+"""
+from typing import Any
+
+
+def extract_update_id(update: dict[str, Any]) -> str | None:
+    """Extract the unique update ID from a parsed Bale update dict.
+
+    Returns the update_id as a string when present, None otherwise.
+    Bale delivers update_id as an integer; convert to string for consistent storage.
+    """
+    raw_id = update.get("update_id")
+    if raw_id is None:
+        return None
+    return str(raw_id)
+
+
+async def is_duplicate_update(update_id: str, bot_key: str) -> bool:
+    """Check whether this update has already been processed by this bot.
+
+    TODO: query processed_updates WHERE update_id = :update_id AND bot_key = :bot_key.
+    Use the async SQLAlchemy session from app.db.session.
+    Returns True if the update was already processed, False otherwise.
+    """
+    return False  # stub — replace with actual DB lookup
+
+
+async def mark_update_processed(update_id: str, bot_key: str) -> None:
+    """Record that this update has been successfully processed by this bot.
+
+    TODO: insert into processed_updates (update_id, bot_key, processed_at=utcnow()).
+    Call this AFTER dispatch() returns without raising — not before.
+    If dispatch() raises an exception the update must NOT be marked processed
+    so the Bale platform can retry delivery.
+    """
+    pass  # stub — replace with actual DB insert

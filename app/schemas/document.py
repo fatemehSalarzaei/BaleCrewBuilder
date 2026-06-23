@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.project import ProjectStatus
+
 
 class DocumentKind(StrEnum):
     RAW_TEXT = "RAW_TEXT"
@@ -37,3 +39,9 @@ class DocumentGenerateResponse(BaseModel):
     document: DocumentRead
     ai_run_id: UUID
     ai_run_status: str
+
+
+class DocumentSubmitReviewResponse(BaseModel):
+    document_id: UUID
+    project_id: UUID
+    project_status: ProjectStatus

@@ -1,0 +1,34 @@
+"""{{ bot.title }} — command dispatcher.
+
+Commands defined in Blueprint:
+{% for cmd in bot.commands %}
+  {{ cmd.command }} → {{ cmd.handler }} (roles: {{ cmd.allowed_roles | join(', ') or 'any' }})
+{% endfor %}
+
+Business logic belongs in backend services (R7).
+Bot handlers are thin interfaces that call the service layer.
+"""
+from typing import Any
+
+
+async def dispatch(update: dict[str, Any]) -> None:
+    """Route an incoming update to the appropriate command handler."""
+    message = update.get("message") or {}
+    text: str = message.get("text") or ""
+{% for cmd in bot.commands %}
+    if text.startswith("{{ cmd.command }}"):
+        await {{ cmd.handler }}(update)
+        return
+{% endfor %}
+    # No matching command — ignore silently
+{% for cmd in bot.commands %}
+
+
+async def {{ cmd.handler }}(update: dict[str, Any]) -> None:
+    """{{ cmd.command }} handler. Allowed roles: {{ cmd.allowed_roles | join(', ') or 'any' }}.
+
+    TODO: call the appropriate backend service method here.
+    Do not implement business logic in this handler (R7).
+    """
+    raise NotImplementedError
+{% endfor %}

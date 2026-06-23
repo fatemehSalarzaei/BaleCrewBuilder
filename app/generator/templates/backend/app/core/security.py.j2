@@ -1,0 +1,29 @@
+from datetime import timedelta
+from typing import Any
+
+from app.core.config import settings
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    # TODO: implement with passlib[bcrypt] — pip install passlib[bcrypt]
+    raise NotImplementedError
+
+
+def get_password_hash(password: str) -> str:
+    # TODO: implement with passlib[bcrypt]
+    raise NotImplementedError
+
+
+def create_access_token(
+    data: dict[str, Any], expires_delta: timedelta | None = None
+) -> str:
+    # TODO: implement with python-jose — jwt.encode(data, settings.secret_key, algorithm=ALGORITHM)
+    raise NotImplementedError
+
+
+def decode_access_token(token: str) -> dict[str, Any] | None:
+    # TODO: implement with python-jose — jwt.decode, catch JWTError → return None
+    raise NotImplementedError

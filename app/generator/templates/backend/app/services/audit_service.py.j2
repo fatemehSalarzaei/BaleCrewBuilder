@@ -1,0 +1,27 @@
+from datetime import datetime, timezone
+from typing import Any
+{% if security.audit_log_enabled %}
+
+
+class AuditService:
+    @staticmethod
+    def log_action(
+        actor: dict[str, Any] | None,
+        action: str,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        # TODO: persist to audit_logs table
+        # Columns: id, actor_id, action, target_type, target_id, metadata, timestamp, source
+        pass
+{% else %}
+
+
+class AuditService:
+    @staticmethod
+    def log_action(
+        actor: dict[str, Any] | None, action: str, **kwargs: Any
+    ) -> None:
+        pass  # Audit logging disabled in Blueprint
+{% endif %}

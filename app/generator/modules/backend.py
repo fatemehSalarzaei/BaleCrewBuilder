@@ -34,11 +34,14 @@ _CORE_INIT_PATHS = [
 _CORE_TEMPLATES: list[tuple[str, str]] = [
     ("backend/app/main.py.j2", "backend/app/main.py"),
     ("backend/app/core/config.py.j2", "backend/app/core/config.py"),
+    ("backend/app/core/security.py.j2", "backend/app/core/security.py"),
     ("backend/app/db/base.py.j2", "backend/app/db/base.py"),
     ("backend/app/db/session.py.j2", "backend/app/db/session.py"),
     ("backend/app/api/deps.py.j2", "backend/app/api/deps.py"),
     ("backend/app/api/router.py.j2", "backend/app/api/router.py"),
     ("backend/app/api/routes/endpoints.py.j2", "backend/app/api/routes/endpoints.py"),
+    ("backend/app/services/auth_service.py.j2", "backend/app/services/auth_service.py"),
+    ("backend/app/services/audit_service.py.j2", "backend/app/services/audit_service.py"),
 ]
 
 _ENTITY_TEMPLATES: list[tuple[str, str]] = [

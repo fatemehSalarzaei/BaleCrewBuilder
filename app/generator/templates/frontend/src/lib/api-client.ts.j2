@@ -1,0 +1,63 @@
+/**
+ * Generated API client for {{ project.name }}.
+ *
+ * Reads the JWT access token from localStorage and attaches it as a Bearer
+ * token to each authenticated request. Call setAccessToken() after a
+ * successful authenticateWithBale() to persist the session.
+ *
+ * Token storage key: {{ project.slug }}_access_token
+ * Base URL: VITE_API_BASE_URL env var (default: same origin)
+ */
+
+const API_BASE_URL: string = (import.meta.env.VITE_API_BASE_URL as string) ?? "";
+const TOKEN_KEY = "{{ project.slug }}_access_token";
+
+export function setAccessToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getAccessToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function clearAccessToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+async function apiRequest<T>(
+  path: string,
+  method: string,
+  body?: unknown,
+  authenticated: boolean = true
+): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authenticated) {
+    const token = getAccessToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`API ${method} ${path}: ${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+// Blueprint-generated API methods for {{ project.name }}:
+{% for endpoint in api_endpoints %}
+
+/** {{ endpoint.method }} {{ endpoint.path }}{% if endpoint.auth_required %} — requires authentication{% endif %} */
+export async function {{ endpoint.name }}({{ "body: unknown" if endpoint.request_schema else "" }}): Promise<unknown> {
+  return apiRequest(
+    "{{ endpoint.path }}",
+    "{{ endpoint.method }}",
+    {{ "body" if endpoint.request_schema else "undefined" }},
+    {{ "true" if endpoint.auth_required else "false" }},
+  );
+}
+{% endfor %}

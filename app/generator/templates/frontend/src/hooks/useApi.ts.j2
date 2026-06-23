@@ -1,0 +1,82 @@
+/**
+ * Generated API hooks for {{ project.name }}.
+ *
+ * Blueprint endpoints: {{ api_endpoints | length }}
+ *
+ * Naming: use{{ "<endpoint_name>" | pascal_case }}
+ * GET endpoints:      return { data, loading, error, fetch }
+ * Mutation endpoints: return { loading, error, execute }
+ *
+ * These hooks wrap the functions in src/lib/api-client.ts with React state.
+ * Do not add business logic here — delegate to backend services (R7).
+ */
+import { useState, useCallback } from "react";
+import {
+{% for endpoint in api_endpoints %}
+  {{ endpoint.name }},
+{% endfor %}
+} from "../lib/api-client";
+
+export interface ApiState<T> {
+  data: T | null;
+  loading: boolean;
+  error: Error | null;
+}
+{% for endpoint in api_endpoints %}
+{% if endpoint.method == "GET" %}
+
+/**
+ * use{{ endpoint.name | pascal_case }}
+ * {{ endpoint.method }} {{ endpoint.path }}
+ * Auth required: {{ endpoint.auth_required }}
+ */
+export function use{{ endpoint.name | pascal_case }}() {
+  const [state, setState] = useState<ApiState<unknown>>({
+    data: null,
+    loading: false,
+    error: null,
+  });
+
+  const fetch = useCallback(async () => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const data = await {{ endpoint.name }}();
+      setState({ data, loading: false, error: null });
+    } catch (err) {
+      setState((s) => ({ ...s, loading: false, error: err as Error }));
+    }
+  }, []);
+
+  return { ...state, fetch };
+}
+{% else %}
+
+/**
+ * use{{ endpoint.name | pascal_case }}
+ * {{ endpoint.method }} {{ endpoint.path }}
+ * Auth required: {{ endpoint.auth_required }}
+ */
+export function use{{ endpoint.name | pascal_case }}() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const execute = useCallback(
+    async ({{ "body: unknown" if endpoint.request_schema else "" }}) => {
+      setLoading(true);
+      setError(null);
+      try {
+        return await {{ endpoint.name }}({{ "body" if endpoint.request_schema else "" }});
+      } catch (err) {
+        setError(err as Error);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  return { loading, error, execute };
+}
+{% endif %}
+{% endfor %}

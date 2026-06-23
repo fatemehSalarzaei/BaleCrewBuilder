@@ -14,6 +14,8 @@ from app.services.generation_gate_service import GenerationGateService
 from app.services.generation_service import GenerationService
 from app.services.project_service import ProjectService
 from app.services.project_status_service import ProjectStatusService
+from app.services.text_extraction_service import TextExtractionService
+from app.services.upload_service import UploadService
 from app.services.validation_service import BlueprintValidationService
 
 
@@ -74,3 +76,13 @@ def get_ai_run_service(
 
 def get_documentation_flow_dep() -> DocumentationFlow:
     return get_documentation_flow()
+
+
+def get_upload_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> UploadService:
+    return UploadService(db=db)
+
+
+def get_text_extraction_service() -> TextExtractionService:
+    return TextExtractionService()
