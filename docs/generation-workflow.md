@@ -22,6 +22,8 @@ POST /projects/{id}/blueprint/generate → BLUEPRINT_GENERATING → BLUEPRINT_GE
 POST /projects/{id}/blueprint/validate → BLUEPRINT_VALIDATED (or BLUEPRINT_VALIDATION_FAILED)
   ↓                 (gate 2 — must reach BLUEPRINT_VALIDATED before generation)
 POST /projects/{id}/generate          → IMPLEMENTATION_GENERATING → IMPLEMENTATION_GENERATED
+  ↓
+GET /projects/{id}/download           → latest completed generation ZIP
 ```
 
 ---
@@ -167,9 +169,22 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/generate
 
 **Expected status:** `201 Created`  
 **Project status after:** `IMPLEMENTATION_GENERATED`  
-**Response contains:** generation run ID, generated file list, and manifest hash.
+**Response contains:** generation run metadata.
 
-The generated project is written to the output directory configured in the generator. In the current implementation the output is returned as a file list in the response body; a download endpoint is planned for future phases.
+The generated project is written to the output directory configured in the generator and recorded as generated artifacts.
+
+---
+
+### Step 8 — Download the generated ZIP
+
+```bash
+curl -L -o generated-project.zip http://localhost:8000/projects/{PROJECT_ID}/download
+```
+
+**Expected status:** `200 OK`  
+**Response contains:** the ZIP artifact for the latest completed generation run.
+
+The endpoint returns clear errors when the project does not exist, no completed generation run exists, the latest completed run has no ZIP artifact, or the ZIP artifact record points to a file that is no longer present on disk.
 
 ---
 

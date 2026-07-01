@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.api.routes.approvals import router as approvals_router
+from app.api.routes.artifacts import router as artifacts_router
 from app.api.routes.blueprints import router as blueprints_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.generator import router as generator_router
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     application.include_router(approvals_router)
     application.include_router(blueprints_router)
     application.include_router(generator_router)
+    application.include_router(artifacts_router)
 
     return application
 

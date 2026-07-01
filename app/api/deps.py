@@ -8,6 +8,7 @@ from app.ai.documentation_flow import DocumentationFlow, get_documentation_flow
 from app.db.session import get_db
 from app.services.ai_run_service import AIRunService
 from app.services.approval_service import ApprovalService
+from app.services.artifact_service import ArtifactService
 from app.services.blueprint_service import BlueprintService
 from app.services.document_service import DocumentService
 from app.services.generation_gate_service import GenerationGateService
@@ -82,6 +83,12 @@ def get_upload_service(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UploadService:
     return UploadService(db=db)
+
+
+def get_artifact_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ArtifactService:
+    return ArtifactService(db=db)
 
 
 def get_text_extraction_service() -> TextExtractionService:

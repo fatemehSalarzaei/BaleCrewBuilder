@@ -4,6 +4,25 @@ When `POST /projects/{id}/generate` completes, the generator writes a set of fil
 
 ---
 
+## Downloading the generated ZIP
+
+After a successful generation run, download the latest completed generated project ZIP from the Builder Platform:
+
+```bash
+curl -L -o generated-project.zip http://localhost:8000/projects/{PROJECT_ID}/download
+```
+
+Unpack it into a working directory:
+
+```bash
+unzip generated-project.zip -d generated-project
+cd generated-project
+```
+
+The ZIP is selected from the latest completed generation run only. Running or failed generation runs are ignored, and the endpoint returns an explicit error if no completed run or ZIP artifact exists.
+
+---
+
 ## Generated project structure
 
 ```

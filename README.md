@@ -110,6 +110,7 @@ All endpoints are under the `/projects` prefix except `/health`.
 | `GET` | `/projects/{id}/blueprint` | Get stored Blueprint |
 | `POST` | `/projects/{id}/blueprint/validate` | Validate the Blueprint |
 | `POST` | `/projects/{id}/generate` | Run code generation |
+| `GET` | `/projects/{id}/download` | Download the latest completed generated project ZIP |
 
 Interactive API documentation is available at `http://localhost:8000/docs` when the server is running.
 
@@ -146,7 +147,7 @@ See [docs/sample-blueprints.md](docs/sample-blueprints.md) for details.
 Tests use an in-memory SQLite database — no PostgreSQL required.
 
 ```bash
-pytest                                          # all 539 tests
+pytest                                          # all tests
 pytest tests/test_e2e_sample_generation.py     # Phase 8 E2E tests (48 tests)
 pytest tests/test_backend_template_generation.py  # backend generation tests (51 tests)
 pytest -q                                       # quiet
@@ -174,7 +175,7 @@ alembic history               # show migration chain
 - `AuthService.authenticate()` and `verify_miniapp_token()` are stubs (`NotImplementedError`).
 - Bot command handlers are stubs (`NotImplementedError`).
 - Generated projects do not include Alembic migrations — create them manually after deployment.
-- No download endpoint for generated project ZIP (planned for a future phase).
+- Generated project ZIPs can be downloaded with `GET /projects/{id}/download`.
 - CrewAI document generation requires external LLM credentials.
 
 See [docs/limitations-and-future-phases.md](docs/limitations-and-future-phases.md) for the full list.

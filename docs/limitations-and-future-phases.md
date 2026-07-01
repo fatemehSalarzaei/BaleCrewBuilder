@@ -1,6 +1,6 @@
 # Limitations and Future Phases
 
-Phases 0–9 of BaleCrewBuilder have been implemented. This document records known technical debt, honest limitations of the current implementation, and suggested directions for future work.
+Phases 0–10 of BaleCrewBuilder have been implemented. This document records known technical debt, honest limitations of the current implementation, and suggested directions for future work.
 
 ---
 
@@ -33,9 +33,9 @@ The test suite does not make real HTTP requests to the Bale API. Webhook handler
 
 `POST /projects/{id}/documents/generate` requires a running CrewAI configuration with LLM API credentials. Without these, document generation will fail. Use `POST /projects/{id}/documents` (manual) or `POST /projects/{id}/documents/upload` as alternatives for local development.
 
-### 7. No download endpoint implemented
+### 7. Local filesystem artifact storage
 
-After generation, the generated project files exist in a temporary output directory. A `GET /projects/{id}/download` endpoint to package and return the output as a ZIP is not yet implemented. Developers must retrieve generated files directly from the filesystem.
+Generated ZIP artifacts are downloadable through `GET /projects/{id}/download`, but artifact storage is still local filesystem based. Production deployments should add durable object storage, retention policy, and signed or authenticated download access.
 
 ### 8. Redis integration is not exercised in the current test suite
 
@@ -69,14 +69,11 @@ There is no documentation or configuration for deploying either the Builder Plat
 | 7 — Frontend Mini App/Web Panel | Complete | React/Vite, Blueprint-driven routes, AdminGuard, Bale auth bootstrap |
 | 8 — E2E sample generation tests | Complete | 48 E2E tests, support_ticket and appointment fixtures |
 | 9 — Documentation and handoff | Complete | This docs set |
+| 10 — Download and artifact management | Complete | Latest completed ZIP artifact can be downloaded via API |
 
 ---
 
 ## Suggested future phases
-
-### Phase 10 — Download and artifact management
-
-Implement `GET /projects/{id}/download` to package the generated output as a ZIP and return it. Add artifact storage (S3, local FS, or database blob) and a download URL with expiry.
 
 ### Phase 11 — Production deployment templates
 
