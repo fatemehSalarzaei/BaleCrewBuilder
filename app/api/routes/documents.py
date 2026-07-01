@@ -91,6 +91,18 @@ async def generate_document(
     try:
         run, output = await ai_run_svc.run_documentation_flow(project_id, flow_input, flow)
     except Exception as exc:
+        try:
+            await project_svc.transition(
+                project_id, ProjectStatus.DOCUMENT_GENERATION_FAILED
+            )
+        except IllegalStatusTransitionError as transition_exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Documentation flow failed and project status recovery failed: "
+                    f"{transition_exc}"
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Documentation flow failed: {exc}",

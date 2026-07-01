@@ -10,21 +10,24 @@ Do not put business rules in API routes — implement them here (R7).
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 {% for fn in blueprint_bare_fns %}
 
 
-async def svc_{{ fn }}() -> Any:
-    raise HTTPException(status_code=501, detail="{{ fn }}: not yet implemented")
+async def svc_{{ fn.name }}({{ fn.signature }}) -> Any:
+    _ = ({{ fn.unused_tuple }})
+    raise HTTPException(status_code=501, detail="{{ fn.name }}: not yet implemented")
 {% endfor %}
 {% for svc in blueprint_service_classes %}
 
 
 class {{ svc.class_name }}:
 {% for method in svc.methods %}
-    async def {{ method }}(self) -> Any:
+    async def {{ method.name }}(self, {{ method.signature }}) -> Any:
+        _ = ({{ method.unused_tuple }})
         raise HTTPException(
             status_code=501,
-            detail="{{ svc.class_name }}.{{ method }}: not yet implemented",
+            detail="{{ svc.class_name }}.{{ method.name }}: not yet implemented",
         )
 
 {% endfor %}

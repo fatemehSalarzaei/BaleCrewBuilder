@@ -160,32 +160,33 @@ async def test_generate_document_empty_requirements_returns_422(
     assert resp.status_code == 422
 
 
-async def test_generate_document_when_project_already_generating_returns_409(
+async def test_generate_document_failed_flow_allows_retry(
     client: AsyncClient,
 ) -> None:
-    """Calling generate on a project already in DOCUMENT_GENERATING returns 409."""
     project_id = await _create_project(client)
 
-    class HangingFlow:
+    class FailingFlow:
         async def run(self, input_data):
             raise RuntimeError("Interrupted")
 
-    app.dependency_overrides[deps.get_documentation_flow_dep] = lambda: HangingFlow()
+    app.dependency_overrides[deps.get_documentation_flow_dep] = lambda: FailingFlow()
     try:
-        # First call transitions project to DOCUMENT_GENERATING but flow fails →
-        # project stays in DOCUMENT_GENERATING
-        await client.post(
+        failed = await client.post(
             f"/projects/{project_id}/documents/generate",
             json={"raw_requirements": "Build a bot."},
         )
-        # Second call: project is in DOCUMENT_GENERATING, can't transition again → 409
-        resp2 = await client.post(
-            f"/projects/{project_id}/documents/generate",
-            json={"raw_requirements": "Build a bot again."},
-        )
-        assert resp2.status_code == 409
     finally:
         del app.dependency_overrides[deps.get_documentation_flow_dep]
+
+    assert failed.status_code == 502
+    project = await client.get(f"/projects/{project_id}")
+    assert project.json()["status"] == "DOCUMENT_GENERATION_FAILED"
+
+    retry = await client.post(
+        f"/projects/{project_id}/documents/generate",
+        json={"raw_requirements": "Build a bot again."},
+    )
+    assert retry.status_code == 201
 
 
 async def test_generate_document_failed_flow_records_failed_ai_run(

@@ -16,6 +16,7 @@ _BALE_SHARED_FILES = [
     "bale/__init__.py",
     "bale/shared/__init__.py",
     "bale/shared/client.py",
+    "bale/shared/backend_client.py",
     "bale/shared/webhook.py",
     "bale/shared/idempotency.py",
     "bale/tests/__init__.py",
@@ -49,6 +50,12 @@ def test_bale_shared_client_is_generated(tmp_path: Path) -> None:
     output_dir, generated = _run(tmp_path)
     assert "bale/shared/client.py" in generated
     assert (output_dir / "bale/shared/client.py").exists()
+
+
+def test_bale_shared_backend_client_is_generated(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+    assert "bale/shared/backend_client.py" in generated
+    assert (output_dir / "bale/shared/backend_client.py").exists()
 
 
 def test_bale_shared_webhook_is_generated(tmp_path: Path) -> None:
@@ -406,6 +413,7 @@ def test_manifest_includes_bale_shared_files(tmp_path: Path) -> None:
     result = GeneratorCore().run(blueprint, output_dir)
 
     assert "bale/shared/client.py" in result.generated_files
+    assert "bale/shared/backend_client.py" in result.generated_files
     assert "bale/shared/webhook.py" in result.generated_files
     assert "bale/shared/idempotency.py" in result.generated_files
 
@@ -497,7 +505,7 @@ def test_admin_bot_dispatch_checks_role_before_routing(tmp_path: Path) -> None:
         )
 
 
-def test_admin_bot_handlers_call_audit_service_when_enabled(tmp_path: Path) -> None:
+def test_admin_bot_handlers_call_backend_audit_when_enabled(tmp_path: Path) -> None:
     blueprint = _load_blueprint()
     admin_bots = [
         b for b in blueprint.bots
@@ -511,12 +519,12 @@ def test_admin_bot_handlers_call_audit_service_when_enabled(tmp_path: Path) -> N
 
     for bot in admin_bots:
         content = (output_dir / f"bale/{bot.key}/commands.py").read_text()
-        assert "AuditService" in content, (
-            f"Admin bot '{bot.key}' must import and call AuditService "
+        assert "make_backend_client" in content, (
+            f"Admin bot '{bot.key}' must call backend audit client "
             "when audit_sensitive_callbacks=True"
         )
-        assert "AuditService.log_action" in content, (
-            f"Admin bot '{bot.key}' handlers must call AuditService.log_action()"
+        assert "log_bot_audit" in content, (
+            f"Admin bot '{bot.key}' handlers must call backend log_bot_audit()"
         )
 
 
@@ -539,9 +547,9 @@ def test_admin_bot_audit_call_present_in_each_handler(tmp_path: Path) -> None:
             handler_body = content[handler_start:]
             next_def = handler_body.find("async def ", len("async def "))
             handler_body = handler_body[:next_def] if next_def != -1 else handler_body
-            assert "AuditService.log_action" in handler_body, (
+            assert "log_bot_audit" in handler_body, (
                 f"Handler '{cmd.handler}' in admin bot '{bot.key}' must call "
-                "AuditService.log_action()"
+                "backend log_bot_audit()"
             )
 
 
@@ -943,12 +951,12 @@ def test_admin_permission_check_before_audit_in_handlers(tmp_path: Path) -> None
             handler_body = handler_body[:next_def] if next_def != -1 else handler_body
 
             perm_pos = handler_body.find("_check_permission")
-            audit_pos = handler_body.find("AuditService.log_action")
+            audit_pos = handler_body.find("log_bot_audit")
             assert perm_pos != -1 and audit_pos != -1, (
-                f"Handler '{cmd.handler}' must have both _check_permission and AuditService.log_action"
+                f"Handler '{cmd.handler}' must have both _check_permission and log_bot_audit"
             )
             assert perm_pos < audit_pos, (
-                f"Handler '{cmd.handler}' must call _check_permission() BEFORE AuditService.log_action()"
+                f"Handler '{cmd.handler}' must call _check_permission() BEFORE log_bot_audit()"
             )
 
 

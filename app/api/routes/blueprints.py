@@ -1,9 +1,16 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 
-from app.api.deps import get_blueprint_service, get_document_service, get_project_service
+from app.ai.blueprint_flow import BlueprintFlow, BlueprintFlowInput
+from app.api.deps import (
+    get_blueprint_flow_dep,
+    get_blueprint_service,
+    get_document_service,
+    get_project_service,
+)
 from app.schemas.blueprint import BotBlueprint, BlueprintGenerateResponse, ValidationResultRead
 from app.schemas.project import ProjectStatus
 from app.services.blueprint_service import (
@@ -93,6 +100,9 @@ async def generate_blueprint_from_document(
     project_svc: Annotated[ProjectService, Depends(get_project_service)],
     blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
     doc_svc: Annotated[DocumentService, Depends(get_document_service)],
+    blueprint_flow: Annotated[BlueprintFlow, Depends(get_blueprint_flow_dep)],
+    mode: Annotated[Literal["placeholder", "ai"], Query()] = "placeholder",
+    additional_context: Annotated[str | None, Query(max_length=2000)] = None,
 ) -> BlueprintGenerateResponse:
     try:
         project = await project_svc.get(project_id)
@@ -118,11 +128,32 @@ async def generate_blueprint_from_document(
             ),
         )
 
-    blueprint = build_placeholder_blueprint(
-        project_name=project.name,
-        document_title=latest_doc.title,
-        document_content=latest_doc.content,
-    )
+    if mode == "placeholder":
+        blueprint = build_placeholder_blueprint(
+            project_name=project.name,
+            document_title=latest_doc.title,
+            document_content=latest_doc.content,
+        )
+    else:
+        flow_input = BlueprintFlowInput(
+            project_name=project.name,
+            document_title=latest_doc.title,
+            document_content=latest_doc.content,
+            additional_context=additional_context,
+        )
+        try:
+            proposal = await blueprint_flow.run(flow_input)
+            blueprint = BotBlueprint.model_validate(proposal)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"AI Blueprint proposal was invalid: {exc}",
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"AI Blueprint proposal flow failed: {exc}",
+            )
 
     try:
         await blueprint_svc.store(project_id, blueprint)

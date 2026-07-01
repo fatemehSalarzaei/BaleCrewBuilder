@@ -6,21 +6,238 @@
  * Page type:       {{ route.page_type }}
  * Admin only:      {{ route.is_admin_only }}
  * API dependencies: {{ route.api_dependencies | join(", ") or "none" }}
+ * Entity:          {{ route.entity_name or "not inferred" }}
  *
  * R7: Do not add business logic here. Delegate to backend via API hooks.
  * Import hooks from: ../hooks/useApi
  */
+import { useEffect, useState, type FormEvent } from "react";
+{% if route.api_dependency_specs %}
+import {
+{% for dependency in route.api_dependency_specs %}
+  {{ dependency.hook_name }},
+{% endfor %}
+} from "../hooks/useApi";
+{% endif %}
+
+type RecordValue = string | number | boolean | null | undefined;
+type RecordMap = Record<string, RecordValue | RecordValue[] | Record<string, unknown>>;
+
+function asRecord(value: unknown): RecordMap | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as RecordMap)
+    : null;
+}
+
+function asRecordArray(value: unknown): RecordMap[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is RecordMap => asRecord(item) !== null);
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  const nested = record.items ?? record.results ?? record.data;
+  return Array.isArray(nested)
+    ? nested.filter((item): item is RecordMap => asRecord(item) !== null)
+    : [];
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
 
 export default function {{ route.component_name }}() {
+{% if route.primary_query %}
+  const {
+    data,
+    loading,
+    error,
+    fetch: loadData,
+  } = {{ route.primary_query.hook_name }}();
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+{% else %}
+  const data: unknown = null;
+  const loading = false;
+  const error: Error | null = null;
+{% endif %}
+{% if route.primary_mutation %}
+  const {
+    loading: submitting,
+    error: submitError,
+    execute,
+  } = {{ route.primary_mutation.hook_name }}();
+{% elif route.page_type == "form" %}
+  const submitting = false;
+  const submitError: Error | null = null;
+{% endif %}
+{% if route.page_type == "form" %}
+  const [formState, setFormState] = useState<Record<string, RecordValue>>({
+{% for field in route.editable_fields %}
+    {{ field.name | tojson }}: {{ "false" if field.input_type == "checkbox" else '""' }},
+{% endfor %}
+  });
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLocalMessage(null);
+{% if route.primary_mutation %}
+{% if route.primary_mutation.request_schema %}
+    await execute(formState);
+{% else %}
+    await execute();
+{% endif %}
+    setLocalMessage("Saved successfully.");
+{% else %}
+    setLocalMessage("No mutation endpoint is connected to this form yet.");
+{% endif %}
+  };
+{% endif %}
+{% if route.page_type == "list" %}
+  const rows = asRecordArray(data);
+{% elif route.page_type == "detail" %}
+  const record = asRecord(data);
+{% endif %}
+
   return (
-    <div
+    <main
       className="{{ route.component_name }}"
       data-route="{{ route.path }}"
       data-page-type="{{ route.page_type }}"
     >
-      <h2>{{ route.page_type | capitalize }}</h2>
-      {/* TODO: implement {{ route.component_name }} content */}
-      {/* Available API hooks in useApi.ts: {{ route.api_dependencies | join(", ") or "none" }} */}
-    </div>
+      <header>
+        <p>Route: {{ route.path }}</p>
+        <h2>{{ route.entity_title }} {{ route.page_type | capitalize }}</h2>
+      </header>
+
+{% if route.page_type == "list" %}
+      {loading ? (
+        <p role="status">Loading {{ route.entity_title | lower }} records…</p>
+      ) : error ? (
+        <p role="alert">Unable to load data: {error.message}</p>
+      ) : rows.length === 0 ? (
+        <p data-state="empty">No records found.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+{% for field in route.display_fields %}
+              <th scope="col">{{ field.label }}</th>
+{% endfor %}
+{% if not route.display_fields %}
+              <th scope="col">Record</th>
+{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={String(row.id ?? index)}>
+{% for field in route.display_fields %}
+                <td>{formatValue(row[{{ field.name | tojson }}])}</td>
+{% endfor %}
+{% if not route.display_fields %}
+                <td>{formatValue(row)}</td>
+{% endif %}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+{% elif route.page_type == "form" %}
+      <form onSubmit={handleSubmit}>
+{% for field in route.editable_fields %}
+        <label>
+          <span>{{ field.label }}</span>
+          <input
+            name={{ field.name | tojson }}
+            type={{ field.input_type | tojson }}
+{% if field.input_type == "checkbox" %}
+            checked={Boolean(formState[{{ field.name | tojson }}])}
+            onChange={(event) =>
+              setFormState((current) => ({
+                ...current,
+                {{ field.name | tojson }}: event.currentTarget.checked,
+              }))
+            }
+{% else %}
+            value={String(formState[{{ field.name | tojson }}] ?? "")}
+            onChange={(event) =>
+              setFormState((current) => ({
+                ...current,
+                {{ field.name | tojson }}: event.currentTarget.value,
+              }))
+            }
+{% endif %}
+          />
+        </label>
+{% endfor %}
+{% if not route.editable_fields %}
+        <p>No editable fields were inferred for this form.</p>
+{% endif %}
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Saving…" : "Submit"}
+        </button>
+        {submitError ? <p role="alert">{submitError.message}</p> : null}
+        {localMessage ? <p role="status">{localMessage}</p> : null}
+      </form>
+{% elif route.page_type == "detail" %}
+      {loading ? (
+        <p role="status">Loading {{ route.entity_title | lower }} details…</p>
+      ) : error ? (
+        <p role="alert">Unable to load detail: {error.message}</p>
+      ) : !record ? (
+        <p data-state="empty">No detail record found.</p>
+      ) : (
+        <dl data-layout="detail">
+{% for field in route.display_fields %}
+          <div>
+            <dt>{{ field.label }}</dt>
+            <dd>{formatValue(record[{{ field.name | tojson }}])}</dd>
+          </div>
+{% endfor %}
+{% if not route.display_fields %}
+          <div>
+            <dt>Record</dt>
+            <dd>{formatValue(record)}</dd>
+          </div>
+{% endif %}
+        </dl>
+      )}
+{% else %}
+      {loading ? <p role="status">Loading page data…</p> : null}
+      {error ? <p role="alert">Unable to load page data: {error.message}</p> : null}
+      <section data-layout="{{ route.page_type }}-panels">
+        <article>
+          <h3>Connected APIs</h3>
+{% if route.api_dependency_specs %}
+          <ul>
+{% for dependency in route.api_dependency_specs %}
+            <li>{{ dependency.method }} {{ dependency.path }} via {{ dependency.hook_name }}</li>
+{% endfor %}
+          </ul>
+{% else %}
+          <p>No API dependencies are connected to this route.</p>
+{% endif %}
+        </article>
+        <article>
+          <h3>Page Data</h3>
+          <p>
+            This {{ route.page_type }} page is wired to backend hooks and is ready for
+            project-specific presentation components.
+          </p>
+        </article>
+      </section>
+{% endif %}
+    </main>
   );
 }

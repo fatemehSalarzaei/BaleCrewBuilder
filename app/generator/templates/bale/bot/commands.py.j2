@@ -10,6 +10,49 @@ Bot handlers are thin interfaces that call the service layer.
 """
 from typing import Any
 
+from bale.shared.backend_client import BackendClient, make_backend_client
+from bale.shared.client import make_{{ bot.key }}_client
+
+_BOT_KEY = "{{ bot.key }}"
+_BOT_AUDIENCE = "{{ bot.audience }}"
+_BACKEND_UNAVAILABLE_MESSAGE = (
+    "This action is not available yet. Please try again later."
+)
+
+
+def _chat_id(update: dict[str, Any]) -> str | int | None:
+    message = update.get("message") or {}
+    chat = message.get("chat") or {}
+    return chat.get("id")
+
+
+async def _send_text(update: dict[str, Any], text: str) -> None:
+    chat_id = _chat_id(update)
+    if chat_id is None:
+        return
+    await make_{{ bot.key }}_client().send_message(chat_id, text)
+
+
+async def _call_command_action(
+    update: dict[str, Any],
+    *,
+    command: str,
+    handler: str,
+    backend_client: BackendClient | None = None,
+) -> None:
+    client = backend_client or make_backend_client()
+    result = await client.call_service_action(
+        handler,
+        update,
+        bot_key=_BOT_KEY,
+        command=command,
+        audience=_BOT_AUDIENCE,
+    )
+    message = _BACKEND_UNAVAILABLE_MESSAGE
+    if result:
+        message = str(result.get("message") or result.get("detail") or message)
+    await _send_text(update, message)
+
 
 async def dispatch(update: dict[str, Any]) -> None:
     """Route an incoming update to the appropriate command handler."""
@@ -27,8 +70,11 @@ async def dispatch(update: dict[str, Any]) -> None:
 async def {{ cmd.handler }}(update: dict[str, Any]) -> None:
     """{{ cmd.command }} handler. Allowed roles: {{ cmd.allowed_roles | join(', ') or 'any' }}.
 
-    TODO: call the appropriate backend service method here.
-    Do not implement business logic in this handler (R7).
+    Delegates project-specific business logic to the backend service layer.
     """
-    raise NotImplementedError
+    await _call_command_action(
+        update,
+        command="{{ cmd.command }}",
+        handler="{{ cmd.handler }}",
+    )
 {% endfor %}

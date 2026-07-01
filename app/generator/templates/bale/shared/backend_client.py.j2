@@ -1,0 +1,140 @@
+"""Shared backend client for Bale bot handlers.
+
+Bot handlers are interface adapters. They call this backend abstraction for
+registration, RBAC, audit, and command actions instead of implementing business
+logic locally.
+"""
+import os
+from typing import Any
+
+import httpx
+
+_BACKEND_BASE_URL_ENV = "BACKEND_BASE_URL"
+_BACKEND_SERVICE_TOKEN_ENV = "BACKEND_SERVICE_TOKEN"
+
+
+class BackendClient:
+    """Async HTTP client for backend-owned bot operations."""
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        service_token: str | None = None,
+    ) -> None:
+        self._base_url = (base_url or os.environ.get(_BACKEND_BASE_URL_ENV, "")).rstrip("/")
+        self._service_token = service_token or os.environ.get(_BACKEND_SERVICE_TOKEN_ENV)
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self._base_url)
+
+    def _headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._service_token:
+            headers["Authorization"] = f"Bearer {self._service_token}"
+        return headers
+
+    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        if not self.is_configured:
+            return None
+
+        async with httpx.AsyncClient(base_url=self._base_url, headers=self._headers()) as client:
+            response = await client.post(path, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict):
+                return data
+            return {"result": data}
+
+    async def verify_registered_user(self, update: dict[str, Any], bot_key: str) -> bool:
+        """Ask the backend whether the Bale sender maps to a registered user."""
+        try:
+            data = await self._post(
+                "/internal/bale/users/verify",
+                {"bot_key": bot_key, "update": update},
+            )
+        except httpx.HTTPError:
+            return False
+        return bool(data and data.get("registered"))
+
+    async def verify_admin_role(self, update: dict[str, Any], bot_key: str) -> bool:
+        """Ask the backend RBAC layer whether the Bale sender is an admin."""
+        try:
+            data = await self._post(
+                "/internal/bale/admin/verify",
+                {"bot_key": bot_key, "update": update},
+            )
+        except httpx.HTTPError:
+            return False
+        return bool(data and data.get("authorized"))
+
+    async def check_permission(
+        self,
+        update: dict[str, Any],
+        bot_key: str,
+        permission_key: str,
+    ) -> bool:
+        """Ask backend RBAC for a command-level permission decision."""
+        try:
+            data = await self._post(
+                "/internal/bale/permissions/check",
+                {
+                    "bot_key": bot_key,
+                    "permission_key": permission_key,
+                    "update": update,
+                },
+            )
+        except httpx.HTTPError:
+            return False
+        return bool(data and data.get("allowed"))
+
+    async def call_service_action(
+        self,
+        action: str,
+        update: dict[str, Any],
+        *,
+        bot_key: str,
+        command: str,
+        audience: str,
+    ) -> dict[str, Any] | None:
+        """Delegate a bot command to backend-owned project service logic."""
+        try:
+            return await self._post(
+                f"/internal/bale/actions/{action}",
+                {
+                    "bot_key": bot_key,
+                    "command": command,
+                    "audience": audience,
+                    "update": update,
+                },
+            )
+        except httpx.HTTPError:
+            return None
+
+    async def log_bot_audit(
+        self,
+        action: str,
+        update: dict[str, Any],
+        *,
+        bot_key: str,
+        command: str,
+    ) -> None:
+        """Delegate sensitive bot audit logging to the backend audit layer."""
+        try:
+            await self._post(
+                "/internal/bale/audit",
+                {
+                    "bot_key": bot_key,
+                    "command": command,
+                    "action": action,
+                    "update": update,
+                    "source": "admin_bot",
+                },
+            )
+        except httpx.HTTPError:
+            return
+
+
+def make_backend_client() -> BackendClient:
+    """Create a backend client from environment configuration."""
+    return BackendClient()

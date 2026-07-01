@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # AI / documentation flow settings
     # Set to "crewai" to use the CrewAI-backed flow; "fallback" requires no API keys.
     ai_documentation_provider: str = Field(default="fallback")
+    ai_blueprint_provider: str = Field(default="fallback")
     anthropic_api_key: str | None = Field(default=None)
     openai_api_key: str | None = Field(default=None)
     ai_model: str | None = Field(default=None)

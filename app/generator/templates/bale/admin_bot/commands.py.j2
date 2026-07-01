@@ -10,30 +10,68 @@ Sensitive callbacks are audited per Blueprint security_policy (R10).
 Business logic belongs in backend services (R7).
 """
 from typing import Any
-{% if bot.security_policy.audit_sensitive_callbacks %}
-from app.services.audit_service import AuditService
-{% endif %}
 
+from bale.shared.backend_client import BackendClient, make_backend_client
+from bale.shared.client import make_{{ bot.key }}_client
+
+_BOT_KEY = "{{ bot.key }}"
+_BOT_AUDIENCE = "{{ bot.audience }}"
+_BACKEND_UNAVAILABLE_MESSAGE = (
+    "This admin action is not available yet. Please try again later."
+)
+_UNAUTHORIZED_MESSAGE = "You are not authorized to use this bot."
+_FORBIDDEN_MESSAGE = "You are not authorized to perform this action."
+
+
+def _chat_id(update: dict[str, Any]) -> str | int | None:
+    message = update.get("message") or {}
+    chat = message.get("chat") or {}
+    return chat.get("id")
+
+
+async def _send_text(update: dict[str, Any], text: str) -> None:
+    chat_id = _chat_id(update)
+    if chat_id is None:
+        return
+    await make_{{ bot.key }}_client().send_message(chat_id, text)
 
 async def _verify_admin_role(update: dict[str, Any]) -> bool:
     """Verify that the sender has admin role via backend RBAC.
 
-    TODO: look up the Bale sender ID in the bale_accounts + user_roles tables.
-    Never trust the Bale sender ID alone — always verify against the database.
-    Returns True if the sender holds an admin role, False otherwise.
+    Never trust the Bale sender ID alone. The backend performs the lookup.
+    Fail closed when the backend lookup is unavailable.
     """
-    return False  # stub — replace with actual RBAC service call
+    return await make_backend_client().verify_admin_role(update, _BOT_KEY)
 
 
 async def _check_permission(update: dict[str, Any], permission_key: str) -> bool:
     """Check a fine-grained permission for the sender via backend RBAC.
 
     Called per-handler in addition to the dispatch-level _verify_admin_role() check.
-    TODO: look up the sender's roles in user_roles, then verify role_permissions
-    for the given permission_key against the permissions table.
-    Returns True if the sender holds the required permission, False otherwise.
+    The backend RBAC service owns the permission decision.
     """
-    return False  # stub — replace with actual permission lookup
+    return await make_backend_client().check_permission(update, _BOT_KEY, permission_key)
+
+
+async def _call_command_action(
+    update: dict[str, Any],
+    *,
+    command: str,
+    handler: str,
+    backend_client: BackendClient | None = None,
+) -> None:
+    client = backend_client or make_backend_client()
+    result = await client.call_service_action(
+        handler,
+        update,
+        bot_key=_BOT_KEY,
+        command=command,
+        audience=_BOT_AUDIENCE,
+    )
+    message = _BACKEND_UNAVAILABLE_MESSAGE
+    if result:
+        message = str(result.get("message") or result.get("detail") or message)
+    await _send_text(update, message)
 
 
 async def dispatch(update: dict[str, Any]) -> None:
@@ -42,7 +80,7 @@ async def dispatch(update: dict[str, Any]) -> None:
     Rejects non-admin senders before any command is dispatched.
     """
     if not await _verify_admin_role(update):
-        # TODO: optionally send an unauthorised reply via BaleClient
+        await _send_text(update, _UNAUTHORIZED_MESSAGE)
         return
     message = update.get("message") or {}
     text: str = message.get("text") or ""
@@ -58,14 +96,22 @@ async def dispatch(update: dict[str, Any]) -> None:
 async def {{ cmd.handler }}(update: dict[str, Any]) -> None:
     """{{ cmd.command }} admin handler. Allowed roles: {{ cmd.allowed_roles | join(', ') or 'admin' }}.
 
-    TODO: call the appropriate backend admin service method here.
-    Do not implement business logic in this handler (R7).
+    Delegates project-specific business logic to the backend service layer.
     """
-    # Fine-grained permission check — TODO: replace with the exact permission key for this command.
     if not await _check_permission(update, "{{ cmd.handler }}"):
+        await _send_text(update, _FORBIDDEN_MESSAGE)
         return
 {% if bot.security_policy.audit_sensitive_callbacks %}
-    AuditService.log_action(None, "{{ cmd.handler }}", resource_type="bot_command")
+    await make_backend_client().log_bot_audit(
+        "{{ cmd.handler }}",
+        update,
+        bot_key=_BOT_KEY,
+        command="{{ cmd.command }}",
+    )
 {% endif %}
-    raise NotImplementedError
+    await _call_command_action(
+        update,
+        command="{{ cmd.command }}",
+        handler="{{ cmd.handler }}",
+    )
 {% endfor %}

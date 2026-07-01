@@ -1,0 +1,33 @@
+"""Celery task stubs for {{ project.name }}.
+
+Tasks are orchestration adapters only. Put project-specific business logic in
+backend services and call those services from task implementations.
+"""
+from typing import Any
+
+from app.workers.celery_app import celery_app
+
+
+@celery_app.task(name="{{ project.slug }}.run_background_action")
+def run_background_action(action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Generic background task stub.
+
+    TODO: route action to backend service-layer methods.
+    Do not implement business rules directly in this task.
+    """
+    return {
+        "status": "not_implemented",
+        "action": action,
+        "payload": payload or {},
+    }
+{% for task in celery_task_specs %}
+
+
+@celery_app.task(name="{{ project.slug }}.{{ task.name }}")
+def {{ task.name }}(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """{{ task.title }} task stub derived from {{ task.source }}.
+
+    TODO: call the matching backend service method.
+    """
+    return run_background_action("{{ task.name }}", payload)
+{% endfor %}

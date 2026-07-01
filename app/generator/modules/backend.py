@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from app.generator.renderer import Renderer
@@ -17,6 +18,97 @@ def _service_class_for(module: str) -> str:
     return _pascal_case(module)
 
 
+def _extract_path_params(path: str) -> list[str]:
+    return re.findall(r"\{(\w+)\}", path)
+
+
+def _roles_repr(roles: list[str]) -> str:
+    return "[" + ", ".join(f'"{role}"' for role in roles) + "]"
+
+
+def _endpoint_signature_parts(ep: dict[str, Any], path_params: list[str]) -> list[str]:
+    parts = [f"{param}: str" for param in path_params]
+
+    if ep.get("request_schema"):
+        parts.append("body: dict[str, Any]")
+
+    if ep.get("auth_required"):
+        parts.append("current_user: Annotated[dict[str, Any], Depends(get_current_user)]")
+
+    allowed_roles = ep.get("allowed_roles") or []
+    if allowed_roles:
+        roles = _roles_repr(allowed_roles)
+        parts.append(f"_rbac: Annotated[None, Depends(require_roles({roles}))]")
+
+    parts.append("db: AsyncSession = Depends(get_db)")
+    return parts
+
+
+def _service_arg_names(ep: dict[str, Any], path_params: list[str]) -> list[str]:
+    args = [*path_params]
+    if ep.get("request_schema"):
+        args.append("body")
+    if ep.get("auth_required"):
+        args.append("current_user")
+    args.append("db")
+    return args
+
+
+def _service_signature_parts(ep: dict[str, Any], path_params: list[str]) -> list[str]:
+    parts = [f"{param}: str" for param in path_params]
+    if ep.get("request_schema"):
+        parts.append("body: dict[str, Any]")
+    if ep.get("auth_required"):
+        parts.append("current_user: dict[str, Any]")
+    parts.append("db: AsyncSession")
+    return parts
+
+
+def _service_method_spec(ep: dict[str, Any], fn: str) -> dict[str, Any]:
+    path_params = _extract_path_params(ep.get("path", ""))
+    service_arg_names = _service_arg_names(ep, path_params)
+    service_signature_parts = _service_signature_parts(ep, path_params)
+    return {
+        "name": fn,
+        "signature": ", ".join(service_signature_parts),
+        "unused_tuple": ", ".join(service_arg_names),
+    }
+
+
+def _safe_task_name(raw: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_]+", "_", raw.strip().lower())
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    if not normalized:
+        normalized = "background_action"
+    if normalized[0].isdigit():
+        normalized = f"task_{normalized}"
+    return normalized
+
+
+def _celery_task_specs(
+    flows: list[dict[str, Any]],
+    custom_logic_blocks: list[str],
+) -> list[dict[str, str]]:
+    specs: dict[str, dict[str, str]] = {}
+    for flow in flows:
+        key = _safe_task_name(flow.get("key") or flow.get("name") or "flow")
+        specs.setdefault(key, {
+            "name": key,
+            "title": flow.get("name") or key.replace("_", " ").title(),
+            "source": "Blueprint flow",
+        })
+
+    for block in custom_logic_blocks:
+        key = _safe_task_name(block)
+        specs.setdefault(key, {
+            "name": key,
+            "title": block.replace("_", " ").title(),
+            "source": "Blueprint custom_logic_blocks",
+        })
+
+    return list(specs.values())
+
+
 def _enrich_endpoints(
     raw_endpoints: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
@@ -28,43 +120,53 @@ def _enrich_endpoints(
         bare_fns: list of bare function names (no class prefix)
     """
     enriched: list[dict[str, Any]] = []
-    class_methods: dict[str, list[str]] = {}
-    bare_fns: list[str] = []
+    class_methods: dict[str, dict[str, dict[str, Any]]] = {}
+    bare_fn_specs: dict[str, dict[str, Any]] = {}
     seen_bare: set[str] = set()
 
     for ep in raw_endpoints:
         sm: str = ep.get("service_method", "")
+        path_params = _extract_path_params(ep.get("path", ""))
+        signature_parts = _endpoint_signature_parts(ep, path_params)
+        service_arg_names = _service_arg_names(ep, path_params)
+        service_args = ", ".join(service_arg_names)
         if "." in sm:
             module, fn = sm.split(".", 1)
             class_name = _service_class_for(module)
             enriched.append({
                 **ep,
+                "path_params": path_params,
+                "signature": ", ".join(signature_parts),
+                "service_args": service_args,
                 "svc_class_name": class_name,
                 "svc_fn_name": fn,
                 "svc_is_bare": False,
-                "svc_call": f"{class_name}().{fn}()",
+                "svc_call": f"{class_name}().{fn}({service_args})",
             })
             if class_name not in class_methods:
-                class_methods[class_name] = []
-            if fn not in class_methods[class_name]:
-                class_methods[class_name].append(fn)
+                class_methods[class_name] = {}
+            class_methods[class_name].setdefault(fn, _service_method_spec(ep, fn))
         else:
             fn = sm
             enriched.append({
                 **ep,
+                "path_params": path_params,
+                "signature": ", ".join(signature_parts),
+                "service_args": service_args,
                 "svc_class_name": None,
                 "svc_fn_name": fn,
                 "svc_is_bare": True,
-                "svc_call": f"svc_{fn}()",
+                "svc_call": f"svc_{fn}({service_args})",
             })
             if fn not in seen_bare:
-                bare_fns.append(fn)
+                bare_fn_specs[fn] = _service_method_spec(ep, fn)
                 seen_bare.add(fn)
 
     service_classes = [
-        {"class_name": cls, "methods": list(methods)}
+        {"class_name": cls, "methods": list(methods.values())}
         for cls, methods in class_methods.items()
     ]
+    bare_fns = list(bare_fn_specs.values())
     return enriched, service_classes, bare_fns
 
 
@@ -93,6 +195,7 @@ _CORE_INIT_PATHS = [
 ]
 
 _CORE_TEMPLATES: list[tuple[str, str]] = [
+    ("backend/requirements.txt.j2", "backend/requirements.txt"),
     ("backend/app/main.py.j2", "backend/app/main.py"),
     ("backend/app/core/config.py.j2", "backend/app/core/config.py"),
     ("backend/app/core/security.py.j2", "backend/app/core/security.py"),
@@ -104,6 +207,15 @@ _CORE_TEMPLATES: list[tuple[str, str]] = [
     ("backend/app/services/auth_service.py.j2", "backend/app/services/auth_service.py"),
     ("backend/app/services/audit_service.py.j2", "backend/app/services/audit_service.py"),
     ("backend/app/services/blueprint_service.py.j2", "backend/app/services/blueprint_service.py"),
+]
+
+_CELERY_INIT_PATHS = [
+    "backend/app/workers/__init__.py",
+]
+
+_CELERY_TEMPLATES: list[tuple[str, str]] = [
+    ("backend/app/workers/celery_app.py.j2", "backend/app/workers/celery_app.py"),
+    ("backend/app/workers/tasks.py.j2", "backend/app/workers/tasks.py"),
 ]
 
 _ENTITY_TEMPLATES: list[tuple[str, str]] = [
@@ -119,12 +231,18 @@ class BackendModule:
     def generate_pre_manifest(self, renderer: Renderer, context: dict[str, Any]) -> list[str]:
         generated: list[str] = []
 
+        has_celery_worker = "celery_worker" in context["enabled_modules"]
         enriched_endpoints, service_classes, bare_fns = _enrich_endpoints(context["api_endpoints"])
         blueprint_service_imports: list[str] = [
-            f"svc_{fn}" for fn in bare_fns
+            f"svc_{fn['name']}" for fn in bare_fns
         ] + [svc["class_name"] for svc in service_classes]
         context = {
             **context,
+            "has_celery_worker": has_celery_worker,
+            "celery_task_specs": _celery_task_specs(
+                context["flows"],
+                context["custom_logic_blocks"],
+            ),
             "api_endpoints": enriched_endpoints,
             "blueprint_service_classes": service_classes,
             "blueprint_bare_fns": bare_fns,
@@ -138,6 +256,15 @@ class BackendModule:
         for template_name, output_path in _CORE_TEMPLATES:
             renderer.render_template(template_name, output_path, context)
             generated.append(output_path)
+
+        if has_celery_worker:
+            for rel_path in _CELERY_INIT_PATHS:
+                renderer.write_file(rel_path, "")
+                generated.append(rel_path)
+
+            for template_name, output_path in _CELERY_TEMPLATES:
+                renderer.render_template(template_name, output_path, context)
+                generated.append(output_path)
 
         for entity in context["entities"]:
             entity_name = entity["name"]

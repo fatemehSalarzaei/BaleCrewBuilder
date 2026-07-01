@@ -14,9 +14,18 @@ class AuthService:
     async def authenticate(
         self, username: str, password: str
     ) -> dict[str, Any] | None:
-        # TODO: load user from DB by username, verify password hash, build token payload
-        # Payload must include at minimum: {"sub": user_id, "roles": [role_key, ...]}
-        raise NotImplementedError
+        """Authenticate a user once project-specific user lookup is implemented.
+
+        Password hashing and JWT primitives are available in app.core.security.
+        This method intentionally returns None until the generated project's
+        user model/query is wired here; it must not hard-code users or accept
+        credentials without a backend lookup.
+        """
+        # TODO: load user from DB by username, then:
+        # if not verify_password(password, user.hashed_password): return None
+        # return {"sub": str(user.id), "roles": [role.key for role in user.roles]}
+        _ = (username, password, verify_password)
+        return None
 
     async def login(self, username: str, password: str) -> str:
         payload = await self.authenticate(username, password)
@@ -26,8 +35,10 @@ class AuthService:
 {% if miniapp.enabled %}
 
     async def verify_miniapp_token(self, init_data: str) -> dict[str, Any]:
-        # TODO: HMAC-validate Bale Mini App initData
+        # TODO: HMAC-validate raw Bale Mini App initData on the backend.
         # Auth endpoint defined in Blueprint: {{ miniapp.auth_endpoint }}
-        # Reference: https://docs.bale.ai/miniapp/init-data
-        raise NotImplementedError
+        # Do not trust frontend initDataUnsafe. Reject until the Bale Mini App
+        # HMAC contract, auth_date freshness window, and user upsert are wired.
+        _ = init_data
+        raise ValueError("Bale Mini App initData verification is not configured")
 {% endif %}

@@ -1,5 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import jwt
+import bcrypt
+from jwt import InvalidTokenError
 
 from app.core.config import settings
 
@@ -8,22 +12,33 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # TODO: implement with passlib[bcrypt] — pip install passlib[bcrypt]
-    raise NotImplementedError
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        hashed_password.encode("utf-8"),
+    )
 
 
 def get_password_hash(password: str) -> str:
-    # TODO: implement with passlib[bcrypt]
-    raise NotImplementedError
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt(),
+    ).decode("utf-8")
 
 
 def create_access_token(
     data: dict[str, Any], expires_delta: timedelta | None = None
 ) -> str:
-    # TODO: implement with python-jose — jwt.encode(data, settings.secret_key, algorithm=ALGORITHM)
-    raise NotImplementedError
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
-    # TODO: implement with python-jose — jwt.decode, catch JWTError → return None
-    raise NotImplementedError
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except InvalidTokenError:
+        return None
+    return payload if isinstance(payload, dict) else None

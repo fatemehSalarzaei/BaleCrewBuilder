@@ -5,6 +5,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.documentation_flow import DocumentationFlow, get_documentation_flow
+from app.ai.blueprint_flow import BlueprintFlow, get_blueprint_flow
 from app.db.session import get_db
 from app.services.ai_run_service import AIRunService
 from app.services.approval_service import ApprovalService
@@ -77,6 +78,10 @@ def get_ai_run_service(
 
 def get_documentation_flow_dep() -> DocumentationFlow:
     return get_documentation_flow()
+
+
+def get_blueprint_flow_dep() -> BlueprintFlow:
+    return get_blueprint_flow()
 
 
 def get_upload_service(

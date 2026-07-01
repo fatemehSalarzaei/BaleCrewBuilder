@@ -55,6 +55,31 @@ async def test_document_generating_to_document_drafted(project_service: ProjectS
     assert updated.status == ProjectStatus.DOCUMENT_DRAFTED
 
 
+async def test_document_generating_to_document_generation_failed(
+    project_service: ProjectService,
+) -> None:
+    p = await _create(project_service)
+    await _advance(project_service, p.id, ProjectStatus.DOCUMENT_GENERATING)
+    updated = await project_service.transition(
+        p.id, ProjectStatus.DOCUMENT_GENERATION_FAILED
+    )
+    assert updated.status == ProjectStatus.DOCUMENT_GENERATION_FAILED
+
+
+async def test_document_generation_failed_can_retry_generating(
+    project_service: ProjectService,
+) -> None:
+    p = await _create(project_service)
+    await _advance(
+        project_service,
+        p.id,
+        ProjectStatus.DOCUMENT_GENERATING,
+        ProjectStatus.DOCUMENT_GENERATION_FAILED,
+    )
+    updated = await project_service.transition(p.id, ProjectStatus.DOCUMENT_GENERATING)
+    assert updated.status == ProjectStatus.DOCUMENT_GENERATING
+
+
 async def test_document_drafted_to_document_review_pending(project_service: ProjectService) -> None:
     p = await _create(project_service)
     await _advance(

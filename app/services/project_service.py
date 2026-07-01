@@ -17,7 +17,11 @@ class IllegalStatusTransitionError(Exception):
 
 _ALLOWED_TRANSITIONS: dict[ProjectStatus, set[ProjectStatus]] = {
     ProjectStatus.DRAFT_CREATED: {ProjectStatus.DOCUMENT_GENERATING},
-    ProjectStatus.DOCUMENT_GENERATING: {ProjectStatus.DOCUMENT_DRAFTED},
+    ProjectStatus.DOCUMENT_GENERATING: {
+        ProjectStatus.DOCUMENT_DRAFTED,
+        ProjectStatus.DOCUMENT_GENERATION_FAILED,
+    },
+    ProjectStatus.DOCUMENT_GENERATION_FAILED: {ProjectStatus.DOCUMENT_GENERATING},
     ProjectStatus.DOCUMENT_DRAFTED: {ProjectStatus.DOCUMENT_REVIEW_PENDING},
     ProjectStatus.DOCUMENT_REVIEW_PENDING: {
         ProjectStatus.DOCUMENT_CHANGE_REQUESTED,

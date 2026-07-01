@@ -13,6 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "blueprints"
 FORBIDDEN_DOMAINS = {"ticket", "appointment", "crm", "support_ticket"}
 
 _CORE_BACKEND_FILES = [
+    "backend/requirements.txt",
     "backend/app/main.py",
     "backend/app/core/config.py",
     "backend/app/core/security.py",

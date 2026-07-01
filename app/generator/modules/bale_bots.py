@@ -15,6 +15,7 @@ _SHARED_INIT_PATHS = [
 
 _SHARED_TEMPLATES: list[tuple[str, str]] = [
     ("bale/shared/client.py.j2", "bale/shared/client.py"),
+    ("bale/shared/backend_client.py.j2", "bale/shared/backend_client.py"),
     ("bale/shared/webhook.py.j2", "bale/shared/webhook.py"),
     ("bale/shared/idempotency.py.j2", "bale/shared/idempotency.py"),
 ]
