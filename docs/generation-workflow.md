@@ -169,9 +169,9 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/generate
 
 **Expected status:** `201 Created`  
 **Project status after:** `IMPLEMENTATION_GENERATED`  
-**Response contains:** generation run metadata.
+**Response contains:** generation run metadata, generated artifact metadata, and `download_url` when a ZIP artifact exists.
 
-The generated project is written to the output directory configured in the generator and recorded as generated artifacts.
+The generated project is written to the output directory configured in the generator and recorded as generated artifacts. The response includes artifact type, filename, and creation timestamp only; local filesystem storage paths are not exposed.
 
 ---
 

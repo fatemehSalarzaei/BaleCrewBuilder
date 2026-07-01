@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GenerationRunStatus(StrEnum):
@@ -22,3 +22,13 @@ class GenerationRunRead(BaseModel):
     started_at: datetime
     finished_at: datetime | None
     error_message: str | None
+    artifacts: list["GeneratedArtifactRead"] = Field(default_factory=list)
+    download_url: str | None = None
+
+
+class GeneratedArtifactRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    artifact_type: str
+    filename: str
+    created_at: datetime

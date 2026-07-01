@@ -10,7 +10,11 @@ from app.db.models.generation_runs import GenerationRunModel
 from app.generator import GeneratorCore
 from app.generator.packager import package_as_zip
 from app.schemas.blueprint import OutputFormat
-from app.schemas.generation import GenerationRunRead, GenerationRunStatus
+from app.schemas.generation import (
+    GeneratedArtifactRead,
+    GenerationRunRead,
+    GenerationRunStatus,
+)
 from app.schemas.project import ProjectStatus
 from app.services.blueprint_service import BlueprintService
 from app.services.generation_gate_service import GenerationGateService
@@ -63,29 +67,30 @@ class GenerationService:
                 package_as_zip(run_output_dir, zip_path)
 
             now = datetime.now(timezone.utc)
+            artifact_reads: list[GeneratedArtifactRead] = []
             for rel_path in result.generated_files:
-                self._db.add(
-                    GeneratedArtifactModel(
-                        id=uuid4(),
-                        generation_run_id=run_id,
-                        artifact_type="file",
-                        filename=rel_path,
-                        storage_path=str(run_output_dir / rel_path),
-                        created_at=now,
-                    )
+                artifact = GeneratedArtifactModel(
+                    id=uuid4(),
+                    generation_run_id=run_id,
+                    artifact_type="file",
+                    filename=rel_path,
+                    storage_path=str(run_output_dir / rel_path),
+                    created_at=now,
                 )
+                self._db.add(artifact)
+                artifact_reads.append(GeneratedArtifactRead.model_validate(artifact))
 
             if zip_path:
-                self._db.add(
-                    GeneratedArtifactModel(
-                        id=uuid4(),
-                        generation_run_id=run_id,
-                        artifact_type="zip",
-                        filename=zip_path.name,
-                        storage_path=str(zip_path),
-                        created_at=now,
-                    )
+                artifact = GeneratedArtifactModel(
+                    id=uuid4(),
+                    generation_run_id=run_id,
+                    artifact_type="zip",
+                    filename=zip_path.name,
+                    storage_path=str(zip_path),
+                    created_at=now,
                 )
+                self._db.add(artifact)
+                artifact_reads.append(GeneratedArtifactRead.model_validate(artifact))
 
             await self._project_svc.transition(project_id, ProjectStatus.IMPLEMENTATION_GENERATED)
             run.status = GenerationRunStatus.COMPLETED
@@ -100,4 +105,18 @@ class GenerationService:
             await self._db.commit()
             raise
 
-        return GenerationRunRead.model_validate(run)
+        return self._build_generation_response(
+            run=run,
+            artifacts=artifact_reads,
+        )
+
+    @staticmethod
+    def _build_generation_response(
+        run: GenerationRunModel,
+        artifacts: list[GeneratedArtifactRead],
+    ) -> GenerationRunRead:
+        response = GenerationRunRead.model_validate(run)
+        response.artifacts = artifacts
+        if any(artifact.artifact_type == "zip" for artifact in artifacts):
+            response.download_url = f"/projects/{run.project_id}/download"
+        return response

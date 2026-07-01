@@ -12,6 +12,8 @@ After a successful generation run, download the latest completed generated proje
 curl -L -o generated-project.zip http://localhost:8000/projects/{PROJECT_ID}/download
 ```
 
+The `POST /projects/{PROJECT_ID}/generate` response also includes a `download_url` field when a ZIP artifact was created, plus artifact metadata for the generated files. Artifact storage paths remain internal to the Builder Platform response.
+
 Unpack it into a working directory:
 
 ```bash

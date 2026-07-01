@@ -109,7 +109,7 @@ All endpoints are under the `/projects` prefix except `/health`.
 | `POST` | `/projects/{id}/blueprint` | Store a Blueprint manually |
 | `GET` | `/projects/{id}/blueprint` | Get stored Blueprint |
 | `POST` | `/projects/{id}/blueprint/validate` | Validate the Blueprint |
-| `POST` | `/projects/{id}/generate` | Run code generation |
+| `POST` | `/projects/{id}/generate` | Run code generation and return run/artifact metadata |
 | `GET` | `/projects/{id}/download` | Download the latest completed generated project ZIP |
 
 Interactive API documentation is available at `http://localhost:8000/docs` when the server is running.
