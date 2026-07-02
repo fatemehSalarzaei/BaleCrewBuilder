@@ -24,7 +24,7 @@ def _load_blueprint(*, celery_enabled: bool) -> BotBlueprint:
 
 def _run(tmp_path: Path, *, celery_enabled: bool) -> tuple[Path, list[str]]:
     output_dir = tmp_path / "output"
-    output_dir.mkdir()
+    output_dir.mkdir(parents=True)
     result = GeneratorCore().run(_load_blueprint(celery_enabled=celery_enabled), output_dir)
     return output_dir, result.generated_files
 
@@ -86,6 +86,45 @@ def test_requirements_omit_celery_dependencies_when_disabled(tmp_path: Path) -> 
 
     assert "celery>=" not in content
     assert "redis>=" not in content
+
+
+def test_deployment_config_includes_worker_only_when_enabled(tmp_path: Path) -> None:
+    enabled_dir, _ = _run(tmp_path / "enabled", celery_enabled=True)
+    disabled_dir, _ = _run(tmp_path / "disabled", celery_enabled=False)
+
+    enabled_compose = (enabled_dir / "deploy/docker-compose.prod.yml").read_text()
+    disabled_compose = (disabled_dir / "deploy/docker-compose.prod.yml").read_text()
+
+    assert "celery_worker:" in enabled_compose
+    assert "app.workers.celery_app.celery_app" in enabled_compose
+    assert "celery_worker:" not in disabled_compose
+    assert "app.workers.celery_app.celery_app" not in disabled_compose
+
+
+def test_env_example_includes_celery_vars_only_when_enabled(tmp_path: Path) -> None:
+    enabled_dir, _ = _run(tmp_path / "enabled", celery_enabled=True)
+    disabled_dir, _ = _run(tmp_path / "disabled", celery_enabled=False)
+
+    enabled_env = (enabled_dir / "deploy/.env.example").read_text()
+    disabled_env = (disabled_dir / "deploy/.env.example").read_text()
+
+    assert "CELERY_BROKER_URL=redis://redis:6379/0" in enabled_env
+    assert "CELERY_RESULT_BACKEND=redis://redis:6379/1" in enabled_env
+    assert "CELERY_BROKER_URL" not in disabled_env
+    assert "CELERY_RESULT_BACKEND" not in disabled_env
+
+
+def test_deployment_docs_mention_worker_only_when_enabled(tmp_path: Path) -> None:
+    enabled_dir, _ = _run(tmp_path / "enabled", celery_enabled=True)
+    disabled_dir, _ = _run(tmp_path / "disabled", celery_enabled=False)
+
+    enabled_docs = (enabled_dir / "docs/deployment.md").read_text()
+    disabled_docs = (disabled_dir / "docs/deployment.md").read_text()
+
+    assert "CELERY_BROKER_URL" in enabled_docs
+    assert "`celery_worker`: Celery worker using the generated backend image" in enabled_docs
+    assert "CELERY_BROKER_URL" not in disabled_docs
+    assert "`celery_worker`: Celery worker using the generated backend image" not in disabled_docs
 
 
 def test_worker_tasks_are_service_layer_stubs_without_business_logic(tmp_path: Path) -> None:

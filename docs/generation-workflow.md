@@ -42,7 +42,7 @@ curl -X POST http://localhost:8000/projects \
   -d '{"name": "My Bot Platform", "description": "A platform for managing resources via Bale bots."}'
 ```
 
-**Expected status:** `201 Created`  
+**Expected status:** `201 Created`
 **Project status after:** `DRAFT_CREATED`  
 **Response contains:** `id` (use as `PROJECT_ID` in subsequent calls)
 
@@ -53,7 +53,7 @@ curl -X POST http://localhost:8000/projects \
 ```bash
 curl -X POST http://localhost:8000/projects/{PROJECT_ID}/documents/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Build a resource management platform with Bale bots for users and admins."}'
+  -d '{"raw_requirements": "Build a resource management platform with Bale bots for users and admins."}'
 ```
 
 **Expected status:** `201 Created`  
@@ -112,7 +112,7 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/document/approve \
   -d '{"reviewer_name": "Alice"}'
 ```
 
-**Expected status:** `200 OK`  
+**Expected status:** `201 Created`
 **Project status after:** `DOCUMENT_APPROVED`
 
 > **Gate 1:** Blueprint generation is blocked (`409 Conflict`) if the project is not in `DOCUMENT_APPROVED` status. You cannot skip this step.
@@ -122,7 +122,7 @@ If the document needs changes before approval:
 ```bash
 curl -X POST http://localhost:8000/projects/{PROJECT_ID}/document/feedback \
   -H "Content-Type: application/json" \
-  -d '{"feedback": "Please add more detail about RBAC roles.", "reviewer_name": "Alice"}'
+  -d '{"decision": "REQUEST_CHANGES", "feedback": "Please add more detail about RBAC roles.", "reviewer_name": "Alice"}'
 ```
 
 ---

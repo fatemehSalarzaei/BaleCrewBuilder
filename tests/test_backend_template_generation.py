@@ -14,11 +14,15 @@ FORBIDDEN_DOMAINS = {"ticket", "appointment", "crm", "support_ticket"}
 
 _CORE_BACKEND_FILES = [
     "backend/requirements.txt",
+    "backend/alembic.ini",
     "backend/app/main.py",
     "backend/app/core/config.py",
     "backend/app/core/security.py",
     "backend/app/db/base.py",
     "backend/app/db/session.py",
+    "backend/app/db/migrations/env.py",
+    "backend/app/db/migrations/script.py.mako",
+    "backend/app/db/migrations/versions/.gitkeep",
     "backend/app/api/deps.py",
     "backend/app/api/router.py",
     "backend/app/services/auth_service.py",
@@ -195,6 +199,76 @@ def test_bot_token_env_vars_appear_in_config(tmp_path: Path) -> None:
         assert token_var in config_content, (
             f"Bot token env '{token_var}' not found in config.py"
         )
+
+
+# ── Alembic scaffold ─────────────────────────────────────────────────────────
+
+
+def test_generated_backend_includes_alembic_scaffold(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+
+    expected = [
+        "backend/alembic.ini",
+        "backend/app/db/migrations/env.py",
+        "backend/app/db/migrations/script.py.mako",
+        "backend/app/db/migrations/versions/.gitkeep",
+    ]
+    for rel_path in expected:
+        assert rel_path in generated, f"Missing Alembic scaffold file: {rel_path}"
+        assert (output_dir / rel_path).exists()
+
+
+def test_generated_alembic_ini_points_to_migrations_dir(tmp_path: Path) -> None:
+    output_dir, _ = _run(tmp_path)
+
+    content = (output_dir / "backend/alembic.ini").read_text()
+
+    assert "script_location = app/db/migrations" in content
+
+
+def test_generated_alembic_env_imports_base_metadata_and_models(tmp_path: Path) -> None:
+    blueprint = _load_blueprint()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    GeneratorCore().run(blueprint, output_dir)
+
+    content = (output_dir / "backend/app/db/migrations/env.py").read_text()
+
+    assert "from app.db.base import Base" in content
+    assert "target_metadata = Base.metadata" in content
+    for entity in blueprint.database.entities:
+        assert f"from app.models import {entity.name}" in content
+
+
+def test_generated_backend_does_not_include_fake_initial_revision(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+
+    generated_revisions = [
+        rel_path
+        for rel_path in generated
+        if rel_path.startswith("backend/app/db/migrations/versions/")
+        and rel_path.endswith(".py")
+    ]
+
+    assert generated_revisions == ["backend/app/db/migrations/versions/__init__.py"]
+    revision_files = [
+        path
+        for path in (output_dir / "backend/app/db/migrations/versions").glob("*.py")
+        if path.name != "__init__.py"
+    ]
+    assert revision_files == []
+
+
+def test_generated_deployment_docs_describe_migration_workflow(tmp_path: Path) -> None:
+    output_dir, generated = _run(tmp_path)
+
+    assert "docs/deployment.md" in generated
+    content = (output_dir / "docs/deployment.md").read_text()
+
+    assert "alembic revision --autogenerate -m \"initial\"" in content
+    assert "alembic upgrade head" in content
+    assert "disposable database" in content
+    assert "does not create a fake initial migration" in content
 
 
 # ── No hard-coded domain ──────────────────────────────────────────────────────

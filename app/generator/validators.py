@@ -17,13 +17,16 @@ class DuplicatePathError(GeneratorError):
     pass
 
 
-class GeneratorValidationError(GeneratorError):
+class InvalidBlueprintForGenerationError(GeneratorError):
     def __init__(self, errors: list[str]) -> None:
         self.errors = errors
         super().__init__(
             "Blueprint failed generator precondition validation:\n"
             + "\n".join(f"- {error}" for error in errors)
         )
+
+
+GeneratorValidationError = InvalidBlueprintForGenerationError
 
 
 def assert_safe_path(relative_path: str, output_root: Path) -> Path:
@@ -59,5 +62,5 @@ def assert_generator_preconditions(
 
     validation = validation_result or BlueprintValidationService().validate(blueprint)
     if not validation.is_valid:
-        raise GeneratorValidationError(validation.errors)
+        raise InvalidBlueprintForGenerationError(validation.errors)
     return validation

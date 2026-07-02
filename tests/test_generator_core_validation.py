@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from app.generator import GeneratorCore
-from app.generator.validators import GeneratorValidationError
+from app.generator.validators import InvalidBlueprintForGenerationError
 from app.schemas.blueprint import BotBlueprint
 
 FIXTURES = Path(__file__).parent / "fixtures" / "blueprints"
@@ -20,10 +20,11 @@ def _assert_rejected_before_writing(
     output_dir: Path,
     expected_message: str,
 ) -> None:
-    with pytest.raises(GeneratorValidationError) as exc_info:
+    with pytest.raises(InvalidBlueprintForGenerationError) as exc_info:
         GeneratorCore().run(blueprint, output_dir)
 
     assert expected_message in str(exc_info.value)
+    assert not (output_dir / "docs/generation_manifest.json").exists()
     assert not output_dir.exists() or not any(output_dir.rglob("*"))
 
 
@@ -91,6 +92,28 @@ def test_admin_route_with_non_admin_role_rejected_before_writing(
         tmp_path / "output",
         "non-admin roles",
     )
+
+
+def test_generator_error_message_includes_all_validation_errors(
+    tmp_path: Path,
+) -> None:
+    blueprint = _load_blueprint("valid_multi_bot.yaml")
+    bots = list(blueprint.bots)
+    bots[1] = bots[1].model_copy(
+        update={
+            "token_env": bots[0].token_env,
+            "webhook_path": bots[0].webhook_path,
+        }
+    )
+    modified = blueprint.model_copy(deep=True, update={"bots": bots})
+
+    with pytest.raises(InvalidBlueprintForGenerationError) as exc_info:
+        GeneratorCore().run(modified, tmp_path / "output")
+
+    message = str(exc_info.value)
+    assert "share token_env" in message
+    assert "share webhook_path" in message
+    assert not (tmp_path / "output" / "docs/generation_manifest.json").exists()
 
 
 def test_valid_support_ticket_fixture_still_generates(tmp_path: Path) -> None:

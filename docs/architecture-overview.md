@@ -10,8 +10,11 @@ Bale bot project.
 | Area | Main code | Responsibility |
 |------|-----------|----------------|
 | FastAPI app | `app/main.py`, `app/api/routes/` | Mounts the REST API for projects, documents, reviews, blueprints, generation runs, and artifact downloads. |
+| Schemas | `app/schemas/` | Pydantic request/response models plus the `BotBlueprint` contract consumed by the generator. |
+| DB models | `app/db/models/` | SQLAlchemy models for projects, documents, reviews, Blueprints, validation results, generation runs, generated artifacts, AI runs, and uploads. |
 | Project workflow | `app/services/project_service.py` | Owns project status transitions and prevents bypassing document/Blueprint gates. |
 | Documents | `app/api/routes/documents.py`, `app/services/document_service.py`, `app/services/ai_run_service.py` | Stores Project Bot Documents, runs documentation flow, records AI run status, and supports upload/manual document creation. |
+| AI flows | `app/ai/` | Provides fallback and CrewAI-backed flows for Project Bot Document drafting and AI-assisted Blueprint proposals. AI produces structured data only; it does not write generated project files. |
 | Reviews | `app/api/routes/approvals.py`, `app/services/approval_service.py` | Records human review decisions and moves projects through document approval states. |
 | Blueprints | `app/api/routes/blueprints.py`, `app/services/blueprint_service.py`, `app/services/validation_service.py` | Stores Bot Blueprints, optionally proposes Blueprints from approved documents, and validates them before generation. |
 | Generation | `app/api/routes/generator.py`, `app/services/generation_service.py`, `app/generator/` | Runs deterministic generation from a validated `BotBlueprint`, records run/artifact metadata, and packages output. |
@@ -61,11 +64,59 @@ flowchart LR
     Artifacts --> Storage
     Artifacts --> Zip[FileResponse ZIP]
 
+    API --> Schemas[Pydantic schemas]
+    DBModels[SQLAlchemy models] --> DB
     Projects --> DB[(Database)]
     Documents --> DB
     Reviews --> DB
     Blueprints --> DB
     Generation --> DB
+```
+
+## Generation Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant API as FastAPI routes
+    participant Project as ProjectService
+    participant Docs as Document/AIRun services
+    participant Review as ApprovalService
+    participant Blueprint as BlueprintService
+    participant Gate as GenerationGateService
+    participant Gen as GenerationService
+    participant Core as GeneratorCore
+    participant Store as ArtifactStorage/DB
+    participant Download as ArtifactService
+
+    Client->>API: POST /projects
+    API->>Project: create project
+    Project-->>Client: DRAFT_CREATED
+    Client->>API: POST /documents, /documents/upload, or /documents/generate
+    API->>Docs: create Project Bot Document
+    Docs-->>Client: DOCUMENT_DRAFTED document
+    Client->>API: POST /documents/{document_id}/submit-review
+    API->>Project: transition to DOCUMENT_REVIEW_PENDING
+    Client->>API: POST /document/approve
+    API->>Review: record approval
+    Review->>Project: transition to DOCUMENT_APPROVED
+    Client->>API: POST /blueprint/generate or POST /blueprint
+    API->>Blueprint: store proposed/manual BotBlueprint
+    Client->>API: POST /blueprint/validate
+    API->>Blueprint: validate semantic Blueprint rules
+    Blueprint->>Project: transition to BLUEPRINT_VALIDATED when valid
+    Client->>API: POST /generate
+    API->>Gate: assert DOCUMENT_APPROVED and BLUEPRINT_VALIDATED gates
+    API->>Gen: run generation
+    Gen->>Core: deterministic render from BotBlueprint
+    Core-->>Gen: generated files and manifest
+    Gen->>Store: create file artifacts and ZIP artifact when output_format=zip
+    Gen-->>Client: GenerationRunRead with artifacts and download_url
+    Client->>API: GET /download
+    API->>Download: resolve latest completed ZIP artifact
+    Download->>Store: verify artifact metadata and local file
+    Download-->>Client: FileResponse ZIP
 ```
 
 ## Gate Boundaries

@@ -80,7 +80,9 @@ Wait a few seconds for the health checks to pass before proceeding.
 alembic upgrade head
 ```
 
-This applies the checked-in initial Builder Platform schema migration, including the current project, document, Blueprint, generation, artifact, AI run, and upload tables. `alembic.ini` is at the repo root — always run `alembic` commands from there.
+This applies the checked-in Builder Platform migration at `app/db/migrations/versions/0474661fd116_initial_builder_platform_schema.py`, including the current project, document, Blueprint, generation, artifact, AI run, and upload tables. `alembic.ini` is at the repo root — always run `alembic` commands from there.
+
+Generated projects have their own generated Alembic scaffold. Their initial migration is not prewritten by the Builder Platform; create and review it from the generated models with `alembic revision --autogenerate -m "initial"` inside the generated backend.
 
 ---
 

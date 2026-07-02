@@ -210,6 +210,10 @@ _CORE_TEMPLATES: list[tuple[str, str]] = [
     ("backend/app/db/session.py.j2", "backend/app/db/session.py"),
     ("backend/app/db/migrations/env.py.j2", "backend/app/db/migrations/env.py"),
     (
+        "backend/app/db/migrations/versions/.gitkeep.j2",
+        "backend/app/db/migrations/versions/.gitkeep",
+    ),
+    (
         "backend/app/db/migrations/script.py.mako.j2",
         "backend/app/db/migrations/script.py.mako",
     ),

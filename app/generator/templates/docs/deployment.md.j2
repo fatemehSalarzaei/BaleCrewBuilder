@@ -68,7 +68,7 @@ Services:
 
 ## 4. Database migration
 
-Generated projects include an Alembic scaffold wired to the generated SQLAlchemy models. The generator does not create a fake initial migration. Before production use, create and verify the initial migration from the generated models:
+Generated projects include an Alembic scaffold wired to the generated SQLAlchemy models: `backend/alembic.ini`, `backend/app/db/migrations/env.py`, `backend/app/db/migrations/script.py.mako`, and a `backend/app/db/migrations/versions/.gitkeep` placeholder. The generator does not create a fake initial migration. Before production use, create and verify the initial migration from the generated models:
 
 ```bash
 cd backend

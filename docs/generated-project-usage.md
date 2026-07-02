@@ -47,6 +47,7 @@ backend/
         env.py                     async Alembic env wired to Base.metadata
         script.py.mako             Alembic revision template
         versions/                  generated migration revisions go here
+          .gitkeep                 keeps the empty revisions directory in generated output
     api/
       deps.py                      get_current_user, require_roles, get_db
       router.py                    mounts entity routers + blueprint endpoint router

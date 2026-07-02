@@ -4,6 +4,10 @@
 then runs four deterministic modules. The modules write files into a generated
 project directory and the core writes `docs/generation_manifest.json`.
 
+The generator can be called directly from Python, but it still enforces
+semantic Blueprint validation before writing files. Invalid Blueprints raise a
+generator error before `docs/generation_manifest.json` is created.
+
 ## Module Map
 
 | Module | Builder code | Generated output |
@@ -42,6 +46,7 @@ Always generated:
 - `backend/app/db/session.py`
 - `backend/app/db/migrations/env.py`
 - `backend/app/db/migrations/script.py.mako`
+- `backend/app/db/migrations/versions/.gitkeep`
 - `backend/app/api/deps.py`
 - `backend/app/api/router.py`
 - `backend/app/api/routes/endpoints.py`
@@ -118,6 +123,18 @@ Route pages are field-driven from Blueprint route metadata, API dependencies, an
 entity fields where they can be inferred. List, form, and detail routes include
 generic loading/error/empty states. Dashboard, report, and settings routes render
 structured panels rather than domain-specific business logic.
+
+## Manifest
+
+`docs/generation_manifest.json` is generated for every run. It contains the
+Blueprint hash, template profile, `template_version` currently set to
+`unversioned`, enabled modules, custom logic blocks, a sorted generated file
+list, generation timestamp, validation result metadata, and
+`test_command_results` as an empty list unless a future workflow records
+generated-project test execution.
+
+The manifest is metadata only; it does not prove business logic has been
+implemented inside generated service stubs.
 
 ## Generated Versus Stubbed
 
