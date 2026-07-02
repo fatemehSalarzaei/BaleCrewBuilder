@@ -56,6 +56,10 @@ Generated route pages are field-driven for list, form, detail, dashboard, report
 
 Generated projects include a minimal Docker-based deployment package with backend/frontend Dockerfiles, `deploy/docker-compose.prod.yml`, `deploy/.env.example`, and `docs/deployment.md`. This is intentionally VPS/container friendly, but it is not a complete production operations setup. TLS termination, backups, observability, secret rotation, migration automation, and artifact hardening remain manual.
 
+### 12. Separate requirements endpoints are deferred
+
+The Builder Platform does not currently persist requirements as a separate resource. Requirements extraction is represented by Project Bot Document generation and review. `POST /projects/{id}/analyze` and `GET /projects/{id}/requirements` should remain future work until a requirements model, service, schemas, and tests are added.
+
 ---
 
 ## Honest status of each phase
@@ -111,3 +115,7 @@ Add a durable artifact storage backend, such as S3-compatible object storage, wi
 ### Follow-up — Blueprint editor UI
 
 Add a web-based Blueprint editor on the Builder Platform frontend that allows a reviewer to visually edit entities, roles, and API endpoints before validation.
+
+### Follow-up — Persisted requirements resource
+
+Add a dedicated requirements model and API only if product workflow needs requirements outside the Project Bot Document lifecycle.

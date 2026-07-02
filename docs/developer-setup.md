@@ -80,7 +80,7 @@ Wait a few seconds for the health checks to pass before proceeding.
 alembic upgrade head
 ```
 
-This creates all nine Builder Platform tables. `alembic.ini` is at the repo root — always run `alembic` commands from there.
+This applies the checked-in initial Builder Platform schema migration, including the current project, document, Blueprint, generation, artifact, AI run, and upload tables. `alembic.ini` is at the repo root — always run `alembic` commands from there.
 
 ---
 
@@ -99,7 +99,7 @@ The API is available at `http://localhost:8000`. Interactive docs are at `http:/
 Tests use an in-memory SQLite database via `aiosqlite`. **No running PostgreSQL is required to run the test suite.**
 
 ```bash
-pytest                      # run all 539 tests
+pytest                      # run the full test suite
 pytest tests/test_e2e_sample_generation.py   # run Phase 8 E2E tests only
 pytest -q                   # quiet output
 pytest -x                   # stop on first failure

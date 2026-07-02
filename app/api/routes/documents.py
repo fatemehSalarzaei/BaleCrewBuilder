@@ -57,6 +57,32 @@ async def create_document(
     return await doc_svc.create(project_id, payload)
 
 
+@router.get(
+    "/{project_id}/document",
+    response_model=DocumentRead,
+    status_code=status.HTTP_200_OK,
+)
+async def get_latest_document(
+    project_id: UUID,
+    project_svc: Annotated[ProjectService, Depends(get_project_service)],
+    doc_svc: Annotated[DocumentService, Depends(get_document_service)],
+) -> DocumentRead:
+    try:
+        await project_svc.get(project_id)
+    except ProjectNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+
+    document = await doc_svc.get_latest_for_project(project_id)
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No document found for project",
+        )
+    return document
+
+
 @router.post(
     "/{project_id}/documents/generate",
     response_model=DocumentGenerateResponse,

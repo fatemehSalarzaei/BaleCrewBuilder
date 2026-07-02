@@ -127,6 +127,96 @@ database:
       relationships: []
       indexes: ["key"]
       audit: false
+    - name: "permissions"
+      table_name: "permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "user_roles"
+      table_name: "user_roles"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "role_permissions"
+      table_name: "role_permissions"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "bale_accounts"
+      table_name: "bale_accounts"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "bots"
+      table_name: "bots"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "bot_conversations"
+      table_name: "bot_conversations"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "processed_updates"
+      table_name: "processed_updates"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
+    - name: "audit_logs"
+      table_name: "audit_logs"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: true
+    - name: "app_settings"
+      table_name: "app_settings"
+      fields:
+        - name: "id"
+          type: "uuid"
+          primary_key: true
+          nullable: false
+      relationships: []
+      indexes: []
+      audit: false
     - name: "items"
       table_name: "items"
       fields:

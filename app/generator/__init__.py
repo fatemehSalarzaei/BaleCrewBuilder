@@ -11,6 +11,7 @@ from app.generator.renderer import Renderer
 from app.generator.template_registry import TemplateRegistry
 from app.generator.validators import assert_generator_preconditions, assert_no_duplicate_paths
 from app.schemas.blueprint import BotBlueprint
+from app.services.validation_service import BlueprintValidationService
 
 
 @dataclass
@@ -25,7 +26,8 @@ class GeneratorCore:
         self._registry = TemplateRegistry()
 
     def run(self, blueprint: BotBlueprint, output_dir: Path) -> GeneratorResult:
-        assert_generator_preconditions(blueprint, self._registry)
+        validation_result = BlueprintValidationService().validate(blueprint)
+        assert_generator_preconditions(blueprint, self._registry, validation_result)
 
         context = build_context(blueprint)
         renderer = Renderer(output_dir)
@@ -45,7 +47,11 @@ class GeneratorCore:
         all_files = sorted(pre_manifest_files + [manifest_rel])
         assert_no_duplicate_paths(all_files)
 
-        manifest = build_manifest(blueprint, all_files)
+        manifest = build_manifest(
+            blueprint,
+            all_files,
+            validation_result=validation_result,
+        )
         renderer.write_file(manifest_rel, manifest.model_dump_json(indent=2))
 
         return GeneratorResult(

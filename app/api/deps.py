@@ -14,6 +14,7 @@ from app.services.artifact_storage import LocalArtifactStorage, get_artifact_sto
 from app.services.blueprint_service import BlueprintService
 from app.services.document_service import DocumentService
 from app.services.generation_gate_service import GenerationGateService
+from app.services.generation_run_service import GenerationRunService
 from app.services.generation_service import GenerationService
 from app.services.project_service import ProjectService
 from app.services.project_status_service import ProjectStatusService
@@ -79,6 +80,12 @@ def get_generation_service(
         blueprint_svc=blueprint_svc,
         artifact_storage=artifact_storage,
     )
+
+
+def get_generation_run_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> GenerationRunService:
+    return GenerationRunService(db=db)
 
 
 def get_ai_run_service(

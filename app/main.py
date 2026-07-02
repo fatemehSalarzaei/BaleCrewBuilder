@@ -9,6 +9,7 @@ from app.api.routes.documents import router as documents_router
 from app.api.routes.generator import router as generator_router
 from app.api.routes.health import router as health_router
 from app.api.routes.projects import router as projects_router
+from app.api.routes.runs import router as runs_router
 
 
 def create_app() -> FastAPI:
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     application.include_router(approvals_router)
     application.include_router(blueprints_router)
     application.include_router(generator_router)
+    application.include_router(runs_router)
     application.include_router(artifacts_router)
 
     return application

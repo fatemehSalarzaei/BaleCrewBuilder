@@ -1,6 +1,6 @@
 # Generated Project Usage
 
-When `POST /projects/{id}/generate` completes, the generator writes a set of files derived entirely from the validated Blueprint. This document explains the structure of the generated output and what a developer must do before the generated project is production-ready.
+When `POST /projects/{id}/generate` completes, the generator writes a set of files derived entirely from the validated Blueprint and records them as generated artifacts. This document explains the structure of the generated output and what a developer must do before the generated project is production-ready.
 
 ---
 
@@ -12,7 +12,7 @@ After a successful generation run, download the latest completed generated proje
 curl -L -o generated-project.zip http://localhost:8000/projects/{PROJECT_ID}/download
 ```
 
-The `POST /projects/{PROJECT_ID}/generate` response also includes a `download_url` field when a ZIP artifact was created, plus artifact metadata for the generated files. Artifact storage paths remain internal to the Builder Platform response.
+Generation records one `file` artifact for each generated file. When the Blueprint uses `output_format=zip`, generation also creates a ZIP artifact and the `POST /projects/{PROJECT_ID}/generate` response includes `download_url`. Artifact metadata includes type, filename, and creation time; storage paths remain internal to the Builder Platform.
 
 Unpack it into a working directory:
 
@@ -21,7 +21,7 @@ unzip generated-project.zip -d generated-project
 cd generated-project
 ```
 
-The ZIP is selected from the latest completed generation run only. Running or failed generation runs are ignored, and the endpoint returns an explicit error if no completed run or ZIP artifact exists.
+`GET /projects/{PROJECT_ID}/download` selects the ZIP from the latest completed generation run only. Running or failed generation runs are ignored, and the endpoint returns an explicit error if no completed run or ZIP artifact exists.
 
 ---
 
@@ -176,7 +176,7 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## Docker production deployment package
 
-Generated projects include a minimal Docker-based deployment package:
+Generated projects include a minimal Docker-based deployment package for VPS or container-host deployment:
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -185,7 +185,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env build
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
 ```
 
-The production compose stack includes `backend`, `frontend`, `postgres`, and `redis`. If the Blueprint enables `celery_worker`, it also includes a `celery_worker` service. See the generated `docs/deployment.md` for environment setup, migration caveats, webhook registration, and health checks.
+The compose stack includes `backend`, `frontend`, `postgres`, and `redis`. If the Blueprint enables `celery_worker`, it also includes a `celery_worker` service. These templates are a starting point, not full production readiness: TLS, backups, observability, secret rotation, and deployment hardening remain application work. See the generated `docs/deployment.md` for environment setup, migration caveats, webhook registration, and health checks.
 
 ---
 
@@ -294,11 +294,14 @@ Those optional tests require the relevant bot token environment variables and mu
 {
   "blueprint_hash": "sha256 of the validated Blueprint",
   "template_profile": "fastapi_react_bale_v1",
+  "template_version": "unversioned",
   "enabled_modules": ["rbac", "audit_log", "bale_client", "miniapp_auth"],
   "custom_logic_blocks": [],
   "generated_files": ["backend/app/main.py", "..."],
-  "generated_at": "2026-06-23T10:00:00+00:00"
+  "generated_at": "2026-06-23T10:00:00+00:00",
+  "validation_result": {"is_valid": true, "errors": []},
+  "test_command_results": []
 }
 ```
 
-Use `blueprint_hash` to verify that the generated files match the Blueprint you intended. If you change the Blueprint and regenerate, the hash will change.
+Use `blueprint_hash` to verify that the generated files match the Blueprint you intended. If you change the Blueprint and regenerate, the hash will change. `template_version` is currently `unversioned` until templates gain explicit version metadata. `test_command_results` is empty unless a future generation workflow runs generated-project test commands and records their results.

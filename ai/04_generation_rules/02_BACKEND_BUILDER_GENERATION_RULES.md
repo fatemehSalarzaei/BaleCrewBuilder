@@ -129,18 +129,27 @@ The Builder Platform itself must implement these APIs:
 POST /projects
 GET /projects/{id}
 POST /projects/{id}/documents
-POST /projects/{id}/analyze
-POST /projects/{id}/document/generate
+POST /projects/{id}/documents/generate
+POST /projects/{id}/documents/upload
 GET /projects/{id}/document
+POST /projects/{id}/documents/{document_id}/submit-review
 POST /projects/{id}/document/feedback
 POST /projects/{id}/document/approve
+GET /projects/{id}/reviews
 POST /projects/{id}/blueprint/generate
+POST /projects/{id}/blueprint
 GET /projects/{id}/blueprint
 POST /projects/{id}/blueprint/validate
 POST /projects/{id}/generate
 GET /projects/{id}/runs
 GET /projects/{id}/download
 ```
+
+Separate persisted requirements endpoints such as `POST /projects/{id}/analyze`
+and `GET /projects/{id}/requirements` are not current Builder Platform APIs.
+Requirements extraction is represented by Project Bot Document generation and
+review. Add separate requirements persistence only as a future phase with an
+explicit model, service, and tests.
 
 ## Required persistence for Builder Platform
 

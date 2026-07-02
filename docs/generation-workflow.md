@@ -61,6 +61,8 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/documents/generate \
 
 > **Note:** The AI document generation flow requires CrewAI to be configured. In a development environment without CrewAI credentials, use step 2b instead.
 
+> **Requirements note:** The Builder Platform does not currently persist a separate requirements object. There is no current `POST /projects/{PROJECT_ID}/analyze` or `GET /projects/{PROJECT_ID}/requirements` API. Requirements extraction is represented by Project Bot Document generation and review.
+
 ---
 
 ### Step 2b — Create a document manually
@@ -169,9 +171,9 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/generate
 
 **Expected status:** `201 Created`  
 **Project status after:** `IMPLEMENTATION_GENERATED`  
-**Response contains:** generation run metadata, generated artifact metadata, and `download_url` when a ZIP artifact exists.
+**Response contains:** generation run metadata, generated file artifact metadata, ZIP artifact metadata when `output_format=zip`, and `download_url` when a ZIP artifact exists.
 
-The generated project is written through the configured artifact storage backend and recorded as generated artifacts. The default backend is `ARTIFACT_STORAGE_BACKEND=local`, which stores files under `GENERATION_OUTPUT_DIR`. The response includes artifact type, filename, and creation timestamp only; storage paths are not exposed.
+The generated project is written through the configured artifact storage backend and recorded as `generated_artifacts`. The default backend is `ARTIFACT_STORAGE_BACKEND=local`, which stores files under `GENERATION_OUTPUT_DIR`. The response includes artifact type, filename, and creation timestamp only; storage paths are not exposed.
 
 ---
 

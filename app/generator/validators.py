@@ -2,6 +2,7 @@ from pathlib import Path
 
 from app.generator.template_registry import TemplateRegistry
 from app.schemas.blueprint import BotBlueprint
+from app.services.validation_service import BlueprintValidationService, ValidationResult
 
 
 class GeneratorError(Exception):
@@ -14,6 +15,15 @@ class PathTraversalError(GeneratorError):
 
 class DuplicatePathError(GeneratorError):
     pass
+
+
+class GeneratorValidationError(GeneratorError):
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        super().__init__(
+            "Blueprint failed generator precondition validation:\n"
+            + "\n".join(f"- {error}" for error in errors)
+        )
 
 
 def assert_safe_path(relative_path: str, output_root: Path) -> Path:
@@ -39,6 +49,15 @@ def assert_no_duplicate_paths(paths: list[str]) -> None:
         seen.add(normalized)
 
 
-def assert_generator_preconditions(blueprint: BotBlueprint, registry: TemplateRegistry) -> None:
+def assert_generator_preconditions(
+    blueprint: BotBlueprint,
+    registry: TemplateRegistry,
+    validation_result: ValidationResult | None = None,
+) -> ValidationResult:
     registry.validate_profile(blueprint.generation.template_profile)
     registry.validate_modules(blueprint.generation.enabled_modules)
+
+    validation = validation_result or BlueprintValidationService().validate(blueprint)
+    if not validation.is_valid:
+        raise GeneratorValidationError(validation.errors)
+    return validation
