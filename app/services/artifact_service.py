@@ -9,6 +9,11 @@ from app.db.models.generated_artifacts import GeneratedArtifactModel
 from app.db.models.generation_runs import GenerationRunModel
 from app.db.models.projects import ProjectModel
 from app.schemas.generation import GenerationRunStatus
+from app.services.artifact_storage import (
+    ArtifactStoragePathError,
+    LocalArtifactStorage,
+    get_artifact_storage,
+)
 
 
 class NoCompletedGenerationRunError(Exception):
@@ -23,10 +28,6 @@ class ZipArtifactFileMissingError(Exception):
     pass
 
 
-class ArtifactStoragePathError(Exception):
-    pass
-
-
 @dataclass(frozen=True)
 class DownloadableArtifact:
     path: Path
@@ -34,8 +35,13 @@ class DownloadableArtifact:
 
 
 class ArtifactService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        storage: LocalArtifactStorage | None = None,
+    ) -> None:
         self._db = db
+        self._storage = storage or get_artifact_storage()
 
     async def get_latest_project_zip(self, project_id: UUID) -> DownloadableArtifact:
         project = await self._db.get(ProjectModel, project_id)
@@ -52,12 +58,12 @@ class ArtifactService:
         if artifact is None:
             raise ZipArtifactNotFoundError(run.id)
 
-        artifact_path = self._resolve_storage_path(artifact.storage_path)
-        if not artifact_path.is_file():
-            raise ZipArtifactFileMissingError(str(artifact_path))
+        resolved = self._storage.resolve_download(artifact.storage_path)
+        if not resolved.path.is_file():
+            raise ZipArtifactFileMissingError(str(resolved.path))
 
         safe_filename = Path(artifact.filename).name or f"{project_id}.zip"
-        return DownloadableArtifact(path=artifact_path, filename=safe_filename)
+        return DownloadableArtifact(path=resolved.path, filename=safe_filename)
 
     async def _latest_completed_run(self, project_id: UUID) -> GenerationRunModel | None:
         stmt = (
@@ -87,10 +93,3 @@ class ArtifactService:
         )
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
-
-    @staticmethod
-    def _resolve_storage_path(storage_path: str) -> Path:
-        if not storage_path:
-            raise ArtifactStoragePathError("Artifact storage path is empty")
-
-        return Path(storage_path).resolve(strict=False)

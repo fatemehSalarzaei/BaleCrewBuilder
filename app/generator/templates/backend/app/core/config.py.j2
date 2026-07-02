@@ -6,6 +6,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./dev.db"
     secret_key: str = "change-me-in-production"
+    miniapp_auth_max_age_seconds: int = 86400
 {% if has_celery_worker %}
     # Environment variables: CELERY_BROKER_URL, CELERY_RESULT_BACKEND
     celery_broker_url: str = "redis://localhost:6379/0"

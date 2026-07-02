@@ -3,6 +3,9 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, verify_password
+{% if miniapp.enabled %}
+from app.services.miniapp_auth_service import MiniAppAuthService
+{% endif %}
 
 
 class AuthService:
@@ -35,10 +38,12 @@ class AuthService:
 {% if miniapp.enabled %}
 
     async def verify_miniapp_token(self, init_data: str) -> dict[str, Any]:
-        # TODO: HMAC-validate raw Bale Mini App initData on the backend.
-        # Auth endpoint defined in Blueprint: {{ miniapp.auth_endpoint }}
-        # Do not trust frontend initDataUnsafe. Reject until the Bale Mini App
-        # HMAC contract, auth_date freshness window, and user upsert are wired.
-        _ = init_data
-        raise ValueError("Bale Mini App initData verification is not configured")
+        """Verify raw Bale Mini App initData on the backend.
+
+        Auth endpoint defined in Blueprint: {{ miniapp.auth_endpoint }}.
+        The verifier rejects unsafe or stale initData and fails closed until the
+        exact Bale Mini App HMAC derivation contract is confirmed.
+        """
+        verifier = MiniAppAuthService()
+        return verifier.verify_init_data(init_data)
 {% endif %}

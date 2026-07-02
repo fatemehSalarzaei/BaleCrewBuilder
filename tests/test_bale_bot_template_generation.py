@@ -675,7 +675,7 @@ def test_single_bot_blueprint_generates_only_one_bot(tmp_path: Path) -> None:
 
     bot_dirs = [
         p.name for p in (output_dir / "bale").iterdir()
-        if p.is_dir() and p.name not in ("shared", "tests")
+        if p.is_dir() and p.name not in ("scripts", "shared", "tests")
     ]
     assert len(bot_dirs) == 1, (
         f"Single-bot Blueprint must generate exactly one bot directory; got: {bot_dirs}"
@@ -739,7 +739,13 @@ def test_single_bot_manifest_contains_only_that_bot(tmp_path: Path) -> None:
 
     bale_bot_files = [
         f for f in result.generated_files
-        if f.startswith("bale/") and "shared" not in f and "tests" not in f and "__init__" not in f
+        if (
+            f.startswith("bale/")
+            and "scripts" not in f
+            and "shared" not in f
+            and "tests" not in f
+            and "__init__" not in f
+        )
     ]
     assert all(bot_key in f for f in bale_bot_files), (
         f"Manifest must only contain files for '{bot_key}', got: {bale_bot_files}"

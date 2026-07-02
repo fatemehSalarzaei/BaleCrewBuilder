@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.services.ai_run_service import AIRunService
 from app.services.approval_service import ApprovalService
 from app.services.artifact_service import ArtifactService
+from app.services.artifact_storage import LocalArtifactStorage, get_artifact_storage
 from app.services.blueprint_service import BlueprintService
 from app.services.document_service import DocumentService
 from app.services.generation_gate_service import GenerationGateService
@@ -62,12 +63,22 @@ def get_project_status_service(
     return ProjectStatusService(project_service=project_svc)
 
 
+def get_artifact_storage_dep() -> LocalArtifactStorage:
+    return get_artifact_storage()
+
+
 def get_generation_service(
     db: Annotated[AsyncSession, Depends(get_db)],
     gate: Annotated[GenerationGateService, Depends(get_generation_gate_service)],
     blueprint_svc: Annotated[BlueprintService, Depends(get_blueprint_service)],
+    artifact_storage: Annotated[LocalArtifactStorage, Depends(get_artifact_storage_dep)],
 ) -> GenerationService:
-    return GenerationService(db=db, gate=gate, blueprint_svc=blueprint_svc)
+    return GenerationService(
+        db=db,
+        gate=gate,
+        blueprint_svc=blueprint_svc,
+        artifact_storage=artifact_storage,
+    )
 
 
 def get_ai_run_service(
@@ -92,8 +103,9 @@ def get_upload_service(
 
 def get_artifact_service(
     db: Annotated[AsyncSession, Depends(get_db)],
+    artifact_storage: Annotated[LocalArtifactStorage, Depends(get_artifact_storage_dep)],
 ) -> ArtifactService:
-    return ArtifactService(db=db)
+    return ArtifactService(db=db, storage=artifact_storage)
 
 
 def get_text_extraction_service() -> TextExtractionService:

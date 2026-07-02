@@ -9,7 +9,11 @@ def _pascal_case(snake: str) -> str:
 
 
 # Service module names already generated as full implementations — avoid class name conflicts.
-_CORE_SERVICE_MODULES: frozenset[str] = frozenset({"auth_service", "audit_service"})
+_CORE_SERVICE_MODULES: frozenset[str] = frozenset({
+    "auth_service",
+    "audit_service",
+    "miniapp_auth_service",
+})
 
 
 def _service_class_for(module: str) -> str:
@@ -186,6 +190,8 @@ _CORE_INIT_PATHS = [
     "backend/app/__init__.py",
     "backend/app/core/__init__.py",
     "backend/app/db/__init__.py",
+    "backend/app/db/migrations/__init__.py",
+    "backend/app/db/migrations/versions/__init__.py",
     "backend/app/api/__init__.py",
     "backend/app/api/routes/__init__.py",
     "backend/app/models/__init__.py",
@@ -196,15 +202,25 @@ _CORE_INIT_PATHS = [
 
 _CORE_TEMPLATES: list[tuple[str, str]] = [
     ("backend/requirements.txt.j2", "backend/requirements.txt"),
+    ("backend/alembic.ini.j2", "backend/alembic.ini"),
     ("backend/app/main.py.j2", "backend/app/main.py"),
     ("backend/app/core/config.py.j2", "backend/app/core/config.py"),
     ("backend/app/core/security.py.j2", "backend/app/core/security.py"),
     ("backend/app/db/base.py.j2", "backend/app/db/base.py"),
     ("backend/app/db/session.py.j2", "backend/app/db/session.py"),
+    ("backend/app/db/migrations/env.py.j2", "backend/app/db/migrations/env.py"),
+    (
+        "backend/app/db/migrations/script.py.mako.j2",
+        "backend/app/db/migrations/script.py.mako",
+    ),
     ("backend/app/api/deps.py.j2", "backend/app/api/deps.py"),
     ("backend/app/api/router.py.j2", "backend/app/api/router.py"),
     ("backend/app/api/routes/endpoints.py.j2", "backend/app/api/routes/endpoints.py"),
     ("backend/app/services/auth_service.py.j2", "backend/app/services/auth_service.py"),
+    (
+        "backend/app/services/miniapp_auth_service.py.j2",
+        "backend/app/services/miniapp_auth_service.py",
+    ),
     ("backend/app/services/audit_service.py.j2", "backend/app/services/audit_service.py"),
     ("backend/app/services/blueprint_service.py.j2", "backend/app/services/blueprint_service.py"),
 ]

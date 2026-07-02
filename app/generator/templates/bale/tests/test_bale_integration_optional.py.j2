@@ -1,0 +1,36 @@
+import os
+
+import pytest
+
+from bale.scripts.register_webhooks import BOT_WEBHOOK_CONFIGS
+
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_BALE_INTEGRATION_TESTS") != "1",
+    reason="Set RUN_BALE_INTEGRATION_TESTS=1 to run real Bale network tests",
+)
+
+
+def _require_token_envs() -> None:
+    missing = [
+        config.token_env
+        for config in BOT_WEBHOOK_CONFIGS
+        if not os.environ.get(config.token_env)
+    ]
+    if missing:
+        pytest.skip("Missing required bot token environment variables")
+
+
+@pytest.mark.asyncio
+async def test_configured_bale_bot_tokens_can_call_get_me() -> None:
+    """Optional real-network smoke test.
+
+    This test never prints token values. It only verifies that configured bot
+    tokens can authenticate with Bale when explicitly enabled.
+    """
+    _require_token_envs()
+
+    for config in BOT_WEBHOOK_CONFIGS:
+        client = config.client_factory()
+        result = await client.get_me()
+        assert isinstance(result, dict)

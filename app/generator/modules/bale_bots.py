@@ -9,15 +9,26 @@ def _pascal_case(snake: str) -> str:
 
 _SHARED_INIT_PATHS = [
     "bale/__init__.py",
+    "bale/scripts/__init__.py",
     "bale/shared/__init__.py",
     "bale/tests/__init__.py",
 ]
 
 _SHARED_TEMPLATES: list[tuple[str, str]] = [
+    ("bale/scripts/register_webhooks.py.j2", "bale/scripts/register_webhooks.py"),
+    ("bale/scripts/delete_webhooks.py.j2", "bale/scripts/delete_webhooks.py"),
     ("bale/shared/client.py.j2", "bale/shared/client.py"),
     ("bale/shared/backend_client.py.j2", "bale/shared/backend_client.py"),
     ("bale/shared/webhook.py.j2", "bale/shared/webhook.py"),
     ("bale/shared/idempotency.py.j2", "bale/shared/idempotency.py"),
+    (
+        "bale/tests/test_webhook_registration_config.py.j2",
+        "bale/tests/test_webhook_registration_config.py",
+    ),
+    (
+        "bale/tests/test_bale_integration_optional.py.j2",
+        "bale/tests/test_bale_integration_optional.py",
+    ),
 ]
 
 # Audience-specific bot templates — selected by bot["audience"] value.

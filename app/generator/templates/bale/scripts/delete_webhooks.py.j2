@@ -1,0 +1,56 @@
+"""Delete Bale webhooks for the generated project's configured bots.
+
+Usage:
+    python -m bale.scripts.delete_webhooks --dry-run
+    python -m bale.scripts.delete_webhooks
+
+This script never prints bot token values.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+
+from bale.scripts.register_webhooks import BOT_WEBHOOK_CONFIGS, BotWebhookConfig
+
+
+def _require_env(name: str) -> None:
+    if not os.environ.get(name):
+        raise RuntimeError(f"Required environment variable is missing: {name}")
+
+
+async def delete_one(config: BotWebhookConfig, *, dry_run: bool) -> None:
+    if dry_run:
+        print(f"[dry-run] delete {config.key}: token_env={config.token_env}")
+        return
+
+    _require_env(config.token_env)
+    client = config.client_factory()
+    result = await client.delete_webhook()
+    ok = bool(isinstance(result, dict) and result.get("ok", True))
+    print(f"deleted {config.key}: ok={ok}")
+
+
+async def delete_all(*, dry_run: bool = False) -> None:
+    for config in BOT_WEBHOOK_CONFIGS:
+        await delete_one(config, dry_run=dry_run)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Delete generated Bale bot webhooks")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print bot keys without calling the Bale API",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    asyncio.run(delete_all(dry_run=args.dry_run))
+
+
+if __name__ == "__main__":
+    main()

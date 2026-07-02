@@ -160,7 +160,7 @@ def test_generated_auth_service_miniapp_verification_fails_closed(
             try:
                 await service.verify_miniapp_token("unsafe-init-data")
             except ValueError as exc:
-                assert "not configured" in str(exc)
+                assert "raw query string" in str(exc)
                 return
             raise AssertionError("Mini App initData was accepted")
 

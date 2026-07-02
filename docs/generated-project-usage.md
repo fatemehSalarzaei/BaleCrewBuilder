@@ -31,7 +31,10 @@ The ZIP is selected from the latest completed generation run only. Running or fa
 README.md                          project README with project name and bot list
 docs/
   generation_manifest.json         blueprint hash, file list, template profile, timestamp
+  deployment.md                    Docker Compose production deployment guide
 backend/
+  Dockerfile                       production backend image
+  alembic.ini                      Alembic config for generated backend migrations
   app/
     main.py                        FastAPI app factory
     core/
@@ -40,6 +43,10 @@ backend/
     db/
       base.py                      SQLAlchemy declarative base
       session.py                   async engine + session factory
+      migrations/
+        env.py                     async Alembic env wired to Base.metadata
+        script.py.mako             Alembic revision template
+        versions/                  generated migration revisions go here
     api/
       deps.py                      get_current_user, require_roles, get_db
       router.py                    mounts entity routers + blueprint endpoint router
@@ -51,23 +58,32 @@ backend/
     schemas/
       {entity_name}.py             Pydantic v2 read/create schemas per entity
     services/
-      auth_service.py              authentication + Mini App token verification (stubs)
+      auth_service.py              auth service shell; Mini App verification fails closed
+      miniapp_auth_service.py      raw initData parser/freshness checks; HMAC contract TODO
       audit_service.py             AuditService.log_action (stub)
       blueprint_service.py         service stubs for every Blueprint API endpoint
       {entity_name}_service.py     CRUD service stub per entity
+    workers/                       Celery app + task stubs when celery_worker is enabled
   tests/
     test_{entity_name}.py          test stub file per entity
 bale/
+  scripts/
+    register_webhooks.py           dry-run capable Bale webhook registration helper
+    delete_webhooks.py             dry-run capable Bale webhook deletion helper
   shared/
     client.py                      BaleClient (httpx wrapper) with per-bot factory functions
+    backend_client.py              backend action/RBAC/audit client for bot handlers
     webhook.py                     HMAC signature verification, update parsing
     idempotency.py                 duplicate update detection
   {bot_key}/
     webhook.py                     FastAPI router for this bot's webhook path
-    commands.py                    command dispatcher + handler stubs
+    commands.py                    command dispatcher + BackendClient-backed handlers
   tests/
     test_{bot_key}_webhook.py      webhook test stubs for each bot
+    test_webhook_registration_config.py
+    test_bale_integration_optional.py
 frontend/
+  Dockerfile                       production frontend static image
   package.json                     React + Vite + TypeScript project
   tsconfig.json
   vite.config.ts
@@ -83,10 +99,13 @@ frontend/
     hooks/
       useApi.ts                    generic data-fetching hook
     pages/
-      WebPanel.tsx                 web panel mode placeholder
-      {ComponentName}Page.tsx      one page component per Blueprint miniapp route
+      WebPanel.tsx                 Mini App/Web Panel bootstrap page
+      {ComponentName}Page.tsx      field-driven page per Blueprint miniapp route
   tests/
     frontend.test.ts               frontend test stubs
+deploy/
+  docker-compose.prod.yml          backend/frontend/postgres/redis production stack
+  .env.example                     production environment variable template
 ```
 
 ---
@@ -100,22 +119,27 @@ The generated `backend/app/core/config.py` reads from environment variables. Cop
 ```bash
 export DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/mydb"
 export SECRET_KEY="your-secret-key"
+export MINIAPP_AUTH_MAX_AGE_SECONDS="86400"     # raw initData freshness window
+export PUBLIC_BASE_URL="https://yourdomain.com" # public backend origin for webhook setup
 export USER_BOT_TOKEN="your-user-bot-token"
 export ADMIN_BOT_TOKEN="your-admin-bot-token"   # only if Blueprint defines an admin bot
+export BACKEND_BASE_URL="http://localhost:8000" # used by generated Bale bot handlers
+export BACKEND_SERVICE_TOKEN="..."              # optional service token for backend bot calls
+export CELERY_BROKER_URL="redis://localhost:6379/0"      # only if celery_worker enabled
+export CELERY_RESULT_BACKEND="redis://localhost:6379/1"  # only if celery_worker enabled
 ```
 
-### 2. Apply database migrations
+### 2. Create and apply database migrations
 
-The generated backend does not include Alembic migrations out of the box. You must create them from the generated models:
+The generated backend includes an Alembic scaffold wired to `Base.metadata` and generated model modules. It does not include a fake initial migration. Create and review the initial migration from the generated models:
 
 ```bash
 cd backend
-alembic init app/db/migrations   # only if no alembic.ini exists
 alembic revision --autogenerate -m "initial"
 alembic upgrade head
 ```
 
-> **Verify in your environment:** `--autogenerate` requires a running PostgreSQL instance and `asyncpg` installed.
+> **Verify in your environment:** `--autogenerate` requires a reachable database and the generated backend dependencies installed. Review the generated revision before applying it to production.
 
 ### 3. Run the backend
 
@@ -123,6 +147,13 @@ alembic upgrade head
 cd backend
 pip install -r requirements.txt   # if present; or: pip install fastapi uvicorn sqlalchemy asyncpg
 uvicorn app.main:app --reload
+```
+
+If the Blueprint enabled `celery_worker`, start a worker after installing backend dependencies:
+
+```bash
+cd backend
+celery -A app.workers.celery_app.celery_app worker --loglevel=info
 ```
 
 ---
@@ -140,6 +171,21 @@ The frontend expects the backend at `http://localhost:8000` by default. Set `VIT
 ```
 VITE_API_BASE_URL=http://localhost:8000
 ```
+
+---
+
+## Docker production deployment package
+
+Generated projects include a minimal Docker-based deployment package:
+
+```bash
+cp deploy/.env.example deploy/.env
+# edit deploy/.env and replace every placeholder
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env build
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+```
+
+The production compose stack includes `backend`, `frontend`, `postgres`, and `redis`. If the Blueprint enables `celery_worker`, it also includes a `celery_worker` service. See the generated `docs/deployment.md` for environment setup, migration caveats, webhook registration, and health checks.
 
 ---
 
@@ -164,44 +210,79 @@ async def submit_ticket(self, data: TicketCreate, submitter_id: UUID) -> TicketR
     return TicketRead.model_validate(ticket)
 ```
 
-### Authentication stubs — `backend/app/services/auth_service.py`
+### Authentication integration — `backend/app/services/auth_service.py`
 
-`authenticate()` and `verify_miniapp_token()` raise `NotImplementedError`. These must be replaced with real database lookups and HMAC validation respectively.
+Password hashing and JWT encode/decode utilities are generated in `backend/app/core/security.py`. `AuthService.authenticate()` intentionally returns `None` until project-specific user lookup is implemented.
+
+Mini App login is backend-only and fail-closed by default:
+
+- The frontend sends only raw `window.Bale.WebApp.initData`.
+- The backend rejects `initDataUnsafe`/JSON-like payloads.
+- Missing `hash`/`signature` is rejected.
+- Missing, invalid, future, or expired `auth_date` is rejected using `MINIAPP_AUTH_MAX_AGE_SECONDS`.
+- Even structurally valid signed input is rejected until the exact Bale Mini App HMAC derivation contract is confirmed and implemented.
+
+Before enabling Mini App login in production, confirm the official Bale contract for the data-check string and bot-token secret derivation, implement signature comparison with `hmac.compare_digest`, then add the generated project's Bale account lookup/upsert and JWT issuance.
 
 ### Entity service stubs — `backend/app/services/{entity_name}_service.py`
 
 Each entity gets a CRUD service file with stub methods. Implement the actual database logic.
 
-### Bot command handlers — `bale/{bot_key}/commands.py`
+### Bot backend action handlers — `bale/{bot_key}/commands.py`
 
-All command handler functions raise `NotImplementedError`. Replace them with calls to the appropriate backend service:
+Command handlers no longer raise `NotImplementedError`; they delegate to `bale/shared/backend_client.py`, send user-facing responses through `BaleClient`, and fail closed when backend registration/RBAC checks are unavailable. The generated backend still needs real internal endpoints behind paths such as `/internal/bale/actions/{action}`, `/internal/bale/users/verify`, `/internal/bale/admin/verify`, `/internal/bale/permissions/check`, and `/internal/bale/audit`.
 
 ```python
-# generated stub (replace this)
 async def handle_my_tickets(update: dict[str, Any]) -> None:
-    raise NotImplementedError
-
-# your implementation
-async def handle_my_tickets(update: dict[str, Any]) -> None:
-    chat_id = update["message"]["chat"]["id"]
-    tickets = await ticket_service.list_my_tickets(...)
-    await client.send_message(chat_id, format_ticket_list(tickets))
+    await _call_command_action(update, command="/my_tickets", handler="handle_my_tickets")
 ```
+
+Implement the corresponding backend service-layer action instead of putting business logic in the bot handler.
+
+### Frontend route pages — `frontend/src/pages/{ComponentName}Page.tsx`
+
+Generated pages now use Blueprint route type, API dependencies, and inferred entity fields to render list tables, controlled forms, detail views, and structured dashboard/report/settings panels. They include loading, error, and empty states and call generated hooks from `frontend/src/hooks/useApi.ts`.
+
+They are still generic generated UI. Domain-specific presentation, richer validation, and production UX polish remain application work.
+
+### Celery task stubs — `backend/app/workers/`
+
+When `celery_worker` is enabled, the generator creates a Celery app and task stubs from Blueprint flows/custom logic blocks. These tasks are orchestration stubs only; implement service-layer calls inside them and keep business rules in backend services.
 
 ---
 
 ## Bot webhook setup
 
-After deployment, register each bot's webhook URL with Bale:
+After deployment, register each bot's webhook URL with Bale using the generated helper scripts:
 
-```python
-from bale.shared.client import make_user_bot_client
+```bash
+export PUBLIC_BASE_URL="https://yourdomain.com"
+export USER_BOT_TOKEN="..."
+export USER_BOT_TOKEN_WEBHOOK_SECRET="..."
+export ADMIN_BOT_TOKEN="..."                    # only if Blueprint defines an admin bot
+export ADMIN_BOT_TOKEN_WEBHOOK_SECRET="..."     # only if Blueprint defines an admin bot
 
-client = make_user_bot_client()
-await client.set_webhook("https://yourdomain.com/webhook/user", secret_token="...")
+python -m bale.scripts.register_webhooks --dry-run
+python -m bale.scripts.register_webhooks
 ```
 
-Webhook paths are defined in the Blueprint and appear in each bot's `webhook.py`.
+The helpers derive each URL from `PUBLIC_BASE_URL` plus the Blueprint webhook path. They keep User Bot and Admin Bot registration separate, read each token from its Blueprint-defined `token_env`, and print only sanitized status. Use dry-run first; it constructs URLs without requiring token values or calling the Bale network.
+
+To remove registered webhooks:
+
+```bash
+python -m bale.scripts.delete_webhooks --dry-run
+python -m bale.scripts.delete_webhooks
+```
+
+Generated unit tests cover URL construction and bot-specific webhook paths without calling Bale. Optional real-network smoke tests are skipped unless explicitly enabled:
+
+```bash
+export RUN_BALE_INTEGRATION_TESTS=1
+pytest bale/tests/test_bale_integration_optional.py
+```
+
+Those optional tests require the relevant bot token environment variables and must not be run in normal CI unless the CI environment is intentionally configured for Bale integration.
 
 ---
 

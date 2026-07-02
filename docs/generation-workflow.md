@@ -171,7 +171,7 @@ curl -X POST http://localhost:8000/projects/{PROJECT_ID}/generate
 **Project status after:** `IMPLEMENTATION_GENERATED`  
 **Response contains:** generation run metadata, generated artifact metadata, and `download_url` when a ZIP artifact exists.
 
-The generated project is written to the output directory configured in the generator and recorded as generated artifacts. The response includes artifact type, filename, and creation timestamp only; local filesystem storage paths are not exposed.
+The generated project is written through the configured artifact storage backend and recorded as generated artifacts. The default backend is `ARTIFACT_STORAGE_BACKEND=local`, which stores files under `GENERATION_OUTPUT_DIR`. The response includes artifact type, filename, and creation timestamp only; storage paths are not exposed.
 
 ---
 
@@ -184,7 +184,7 @@ curl -L -o generated-project.zip http://localhost:8000/projects/{PROJECT_ID}/dow
 **Expected status:** `200 OK`  
 **Response contains:** the ZIP artifact for the latest completed generation run.
 
-The endpoint returns clear errors when the project does not exist, no completed generation run exists, the latest completed run has no ZIP artifact, or the ZIP artifact record points to a file that is no longer present on disk.
+The endpoint returns clear errors when the project does not exist, no completed generation run exists, the latest completed run has no ZIP artifact, or the ZIP artifact record cannot be resolved by the configured storage backend. For the default local backend, a missing ZIP file returns `410 Gone`.
 
 ---
 

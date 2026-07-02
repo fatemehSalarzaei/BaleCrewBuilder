@@ -19,6 +19,7 @@ from app.schemas.project import ProjectStatus
 from app.services.blueprint_service import BlueprintService
 from app.services.generation_gate_service import GenerationGateService
 from app.services.project_service import ProjectService
+from app.services.artifact_storage import LocalArtifactStorage
 
 
 class GenerationService:
@@ -28,12 +29,15 @@ class GenerationService:
         gate: GenerationGateService,
         blueprint_svc: BlueprintService,
         output_dir: Path | None = None,
+        artifact_storage: LocalArtifactStorage | None = None,
     ) -> None:
         self._db = db
         self._gate = gate
         self._blueprint_svc = blueprint_svc
         self._project_svc = ProjectService(db=db)
-        self._output_dir = output_dir or Path(settings.generation_output_dir)
+        self._artifact_storage = artifact_storage or LocalArtifactStorage(
+            output_dir or Path(settings.generation_output_dir)
+        )
 
     async def run_generation(self, project_id: UUID) -> GenerationRunRead:
         await self._gate.assert_implementation_generation_allowed(project_id)
@@ -53,7 +57,7 @@ class GenerationService:
         self._db.add(run)
         await self._db.commit()
 
-        run_output_dir = self._output_dir / str(run_id)
+        run_output_dir = self._artifact_storage.generation_run_dir(run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
 
         await self._project_svc.transition(project_id, ProjectStatus.IMPLEMENTATION_GENERATING)
@@ -63,7 +67,7 @@ class GenerationService:
 
             zip_path: Path | None = None
             if blueprint.generation.output_format == OutputFormat.ZIP:
-                zip_path = self._output_dir / f"{run_id}.zip"
+                zip_path = self._artifact_storage.zip_path(run_id)
                 package_as_zip(run_output_dir, zip_path)
 
             now = datetime.now(timezone.utc)
@@ -74,7 +78,9 @@ class GenerationService:
                     generation_run_id=run_id,
                     artifact_type="file",
                     filename=rel_path,
-                    storage_path=str(run_output_dir / rel_path),
+                    storage_path=self._artifact_storage.save_file_artifact(
+                        run_output_dir, rel_path
+                    ),
                     created_at=now,
                 )
                 self._db.add(artifact)
@@ -86,7 +92,7 @@ class GenerationService:
                     generation_run_id=run_id,
                     artifact_type="zip",
                     filename=zip_path.name,
-                    storage_path=str(zip_path),
+                    storage_path=self._artifact_storage.save_zip_artifact(zip_path),
                     created_at=now,
                 )
                 self._db.add(artifact)

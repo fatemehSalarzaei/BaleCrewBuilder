@@ -1,0 +1,103 @@
+"""Backend-only Bale Mini App initData verifier.
+
+This module intentionally accepts only the raw initData query-string sent by the
+Bale WebView frontend. Never accept initDataUnsafe or any frontend-parsed user
+object as proof of identity.
+
+The repository does not currently include an official Bale Mini App HMAC
+derivation contract. Until that contract is confirmed, this verifier performs
+the safe rejection checks that are independent of the signing algorithm and then
+fails closed before accepting any identity.
+"""
+from __future__ import annotations
+
+import time
+from urllib.parse import parse_qsl
+
+from app.core.config import settings
+
+
+class MiniAppAuthVerificationError(ValueError):
+    """Raised when raw Bale Mini App initData cannot be verified."""
+
+
+class MiniAppAuthService:
+    """Validate raw Mini App initData without trusting frontend-parsed data."""
+
+    def verify_init_data(self, raw_init_data: str) -> dict[str, object]:
+        """Verify raw initData and return a trusted user payload.
+
+        Current behavior is deliberately fail-closed. Missing signatures,
+        expired auth_date values, malformed query strings, and JSON-like
+        initDataUnsafe payloads are rejected with precise errors. Even
+        structurally valid signed input is rejected until the exact Bale HMAC
+        algorithm and bot-token secret derivation are confirmed against official
+        Bale documentation.
+        """
+        fields = self._parse_raw_init_data(raw_init_data)
+        self._require_signature(fields)
+        self._validate_auth_date(fields)
+        self._fail_until_bale_contract_is_confirmed()
+
+    def _parse_raw_init_data(self, raw_init_data: str) -> dict[str, str]:
+        if not isinstance(raw_init_data, str) or not raw_init_data.strip():
+            raise MiniAppAuthVerificationError("Bale Mini App initData is required")
+
+        stripped = raw_init_data.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            raise MiniAppAuthVerificationError(
+                "Raw initData query string is required; initDataUnsafe is not accepted"
+            )
+
+        try:
+            pairs = parse_qsl(stripped, keep_blank_values=True, strict_parsing=True)
+        except ValueError as exc:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData must be a raw query string"
+            ) from exc
+        fields = dict(pairs)
+        if not fields:
+            raise MiniAppAuthVerificationError("Bale Mini App initData is empty")
+        return fields
+
+    def _require_signature(self, fields: dict[str, str]) -> None:
+        if not fields.get("hash") and not fields.get("signature"):
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData is missing hash/signature"
+            )
+
+    def _validate_auth_date(self, fields: dict[str, str]) -> None:
+        raw_auth_date = fields.get("auth_date")
+        if not raw_auth_date:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData is missing auth_date"
+            )
+
+        try:
+            auth_date = int(raw_auth_date)
+        except ValueError as exc:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData auth_date must be a Unix timestamp"
+            ) from exc
+
+        now = int(time.time())
+        if auth_date > now + 60:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData auth_date is in the future"
+            )
+
+        max_age = settings.miniapp_auth_max_age_seconds
+        if max_age <= 0:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App auth freshness window is not configured"
+            )
+
+        if now - auth_date > max_age:
+            raise MiniAppAuthVerificationError(
+                "Bale Mini App initData auth_date is expired"
+            )
+
+    def _fail_until_bale_contract_is_confirmed(self) -> None:
+        raise MiniAppAuthVerificationError(
+            "Bale Mini App HMAC verification contract is not configured"
+        )

@@ -1,0 +1,119 @@
+# Production Deployment — {{ project.name }}
+
+This generated deployment package is intentionally simple: Docker Compose on a VPS or container host. It is not a Kubernetes setup and it does not make the project production-ready by itself.
+
+## Generated deployment files
+
+```text
+backend/Dockerfile
+frontend/Dockerfile
+deploy/docker-compose.prod.yml
+deploy/.env.example
+docs/deployment.md
+```
+
+## 1. Prepare environment
+
+Copy the example environment file and replace every placeholder value:
+
+```bash
+cp deploy/.env.example deploy/.env
+```
+
+Required values include:
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `SECRET_KEY`
+- `BACKEND_BASE_URL`
+- `BACKEND_SERVICE_TOKEN`
+{% for bot in bots %}
+- `{{ bot.token_env }}`
+- `{{ bot.key | upper }}_WEBHOOK_URL`
+- `{{ bot.key | upper }}_WEBHOOK_SECRET`
+{% endfor %}
+- `VITE_API_BASE_URL`
+{% if has_celery_worker %}
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+{% endif %}
+
+Do not commit `deploy/.env`.
+
+## 2. Build images
+
+From the generated project root:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env build
+```
+
+The frontend image uses `VITE_API_BASE_URL` at build time. Set it to the public backend URL that browser clients should call.
+
+## 3. Start services
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d
+```
+
+Services:
+
+- `backend`: FastAPI served by Uvicorn on port `${BACKEND_PORT:-8000}`
+- `frontend`: Vite static build served by nginx on port `${FRONTEND_PORT:-8080}`
+- `postgres`: PostgreSQL 16
+- `redis`: Redis 7
+{% if has_celery_worker %}
+- `celery_worker`: Celery worker using the generated backend image
+{% endif %}
+
+## 4. Database migration
+
+Generated projects include an Alembic scaffold wired to the generated SQLAlchemy models. The generator does not create a fake initial migration. Before production use, create and verify the initial migration from the generated models:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "initial"
+alembic upgrade head
+```
+
+Run these commands against a disposable database first and review the generated revision before applying it to production.
+
+## 5. Health checks
+
+Backend:
+
+```bash
+curl http://localhost:${BACKEND_PORT:-8000}/health
+```
+
+Frontend:
+
+```bash
+curl http://localhost:${FRONTEND_PORT:-8080}/
+```
+
+## 6. Bale webhook registration
+
+After the backend is reachable over HTTPS, register each bot webhook using the generated Bale client factory.
+
+{% for bot in bots %}
+`{{ bot.title }}` (`{{ bot.key }}`):
+
+```python
+from bale.shared.client import make_{{ bot.key }}_client
+
+client = make_{{ bot.key }}_client()
+await client.set_webhook("https://your-domain.example{{ bot.webhook_path }}", secret_token="...")
+```
+
+{% endfor %}
+Webhook URLs and secrets should match the values in `deploy/.env`.
+
+## 7. Operational limitations
+
+- Replace generated service stubs before serving real traffic.
+- Implement backend Bale Mini App HMAC verification before enabling Mini App login.
+- Review and apply generated Alembic revisions before production deployment.
+- Add TLS termination through your VPS proxy, load balancer, or reverse proxy.
+- Add backup, monitoring, log retention, and secret rotation.
+- Run real Bale network integration tests before relying on bot behavior.

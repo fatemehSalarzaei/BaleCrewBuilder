@@ -1,0 +1,59 @@
+import asyncio
+
+import pytest
+
+from bale.scripts.register_webhooks import (
+    BOT_WEBHOOK_CONFIGS,
+    build_webhook_url,
+    get_public_base_url,
+    register_all,
+)
+
+
+def test_build_webhook_url_normalizes_slashes() -> None:
+    assert (
+        build_webhook_url("https://example.com/", "/webhooks/bale/user")
+        == "https://example.com/webhooks/bale/user"
+    )
+
+
+def test_missing_public_base_url_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError, match="PUBLIC_BASE_URL is required"):
+        get_public_base_url()
+
+
+def test_bot_specific_webhook_paths_are_configured() -> None:
+    paths = {config.key: config.webhook_path for config in BOT_WEBHOOK_CONFIGS}
+
+{% for bot in bots %}
+    assert paths["{{ bot.key }}"] == "{{ bot.webhook_path }}"
+{% endfor %}
+
+
+def test_bot_token_envs_are_configured_without_token_values() -> None:
+    token_envs = {config.key: config.token_env for config in BOT_WEBHOOK_CONFIGS}
+
+{% for bot in bots %}
+    assert token_envs["{{ bot.key }}"] == "{{ bot.token_env }}"
+{% endfor %}
+    assert all("TOKEN" in token_env for token_env in token_envs.values())
+
+
+def test_dry_run_registers_no_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
+{% for bot in bots %}
+    monkeypatch.delenv("{{ bot.token_env }}", raising=False)
+{% if security.bot_webhook_secret %}
+    monkeypatch.delenv("{{ bot.token_env }}_WEBHOOK_SECRET", raising=False)
+{% endif %}
+{% endfor %}
+
+    asyncio.run(register_all(dry_run=True))
+
+
+def test_user_and_admin_webhook_paths_remain_separate() -> None:
+    paths = [config.webhook_path for config in BOT_WEBHOOK_CONFIGS]
+
+    assert len(paths) == len(set(paths))

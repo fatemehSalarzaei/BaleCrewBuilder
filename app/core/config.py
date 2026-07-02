@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO")
 
+    artifact_storage_backend: str = Field(default="local")
     generation_output_dir: str = Field(default="./generated_output")
 
     # AI / documentation flow settings

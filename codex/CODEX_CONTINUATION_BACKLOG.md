@@ -2,210 +2,141 @@
 
 This backlog is intentionally separate from `ai/05_execution_plan/01_PHASES_TASKS_ACCEPTANCE_CRITERIA.md`.
 
-It does not rewrite the original phase plan. It only defines continuation phases after the already implemented foundation.
+It does not rewrite the original phase plan. It records the current continuation status and starts the next tasks from the implementation that exists now.
 
 ---
 
-## Phase 10 — Artifact Download and Artifact Management
+## Completed continuation work
 
-### Problem
+The following continuation tasks are implemented and covered by tests:
 
-The generator writes output files and creates ZIP artifacts, but there is no API endpoint for downloading the latest generated ZIP.
+1. Artifact download and artifact management
+   - `GET /projects/{project_id}/download` returns the ZIP artifact for the latest completed generation run.
+   - Precise errors exist for missing project, no completed run, missing ZIP artifact, and missing file on disk.
 
-### Required behavior
+2. Generation response accuracy
+   - `POST /projects/{project_id}/generate` returns run metadata, generated artifact metadata, and `download_url` when a ZIP artifact exists.
+   - Local filesystem paths are not exposed.
 
-Add:
+3. Document generation failure recovery
+   - Failed documentation flow transitions the project to `DOCUMENT_GENERATION_FAILED`.
+   - Retry from `DOCUMENT_GENERATION_FAILED` is allowed.
 
-```text
-GET /projects/{project_id}/download
-```
+4. AI-assisted Blueprint proposal flow
+   - `POST /projects/{project_id}/blueprint/generate?mode=ai` can propose structured Blueprint data from an approved document.
+   - Human storage/review and `/blueprint/validate` remain mandatory before code generation.
 
-The endpoint must:
+5. Generated backend security primitives
+   - Generated password hashing and JWT create/decode helpers are implemented.
+   - Mini App token verification still fails closed until the Bale HMAC contract is fully wired.
 
-1. Verify the project exists.
-2. Find the latest completed generation run for the project.
-3. Find the ZIP artifact linked to that run.
-4. Verify the ZIP file exists on disk.
-5. Return the ZIP using FastAPI `FileResponse`.
-6. Return clear errors for:
-   - project not found;
-   - no completed generation run;
-   - no ZIP artifact;
-   - ZIP path missing on disk.
+6. Schema-aware generated endpoint wiring
+   - Generated endpoints pass request body, path params, current user, and DB session into service stubs.
+   - RBAC and audit calls are preserved.
 
-### Suggested files to add/change
+7. Generated Bale bot handler backend delegation
+   - Generated bot command handlers call `bale/shared/backend_client.py`.
+   - User registration, admin authorization, permission checks, command actions, and audit delegation go through backend abstractions.
+   - Handlers no longer raise `NotImplementedError`.
 
-```text
-app/api/routes/artifacts.py
-app/api/deps.py
-app/services/artifact_service.py
-app/schemas/artifact.py
-app/main.py
-tests/test_artifact_download.py
-```
+8. Field-driven frontend route pages
+   - Generated list/form/detail pages use inferred entity fields and API hooks.
+   - Dashboard/report/settings-style pages render structured panels and connected API dependencies.
+   - Loading, error, and empty states are generated.
 
-### Acceptance criteria
+9. Optional Celery worker skeleton
+   - When `generation.enabled_modules` includes `celery_worker`, generated projects include `backend/app/workers/celery_app.py`, `tasks.py`, Celery settings, and Celery/Redis requirements.
+   - Worker tasks remain service-layer orchestration stubs.
 
-- `GET /projects/{project_id}/download` returns a ZIP for the latest completed run.
-- The endpoint does not allow downloading artifacts from failed/running runs.
-- Missing project returns 404.
-- No completed run returns 409 or 404 with an explicit message.
-- Missing ZIP artifact returns 404 or 409 with an explicit message.
-- Missing file on disk returns 410 Gone or 500 with an explicit message; prefer 410.
-- Tests cover success and all failure branches.
+10. Minimal production deployment templates
+   - Every generated project includes `backend/Dockerfile`, `frontend/Dockerfile`, `deploy/docker-compose.prod.yml`, `deploy/.env.example`, and `docs/deployment.md`.
+   - Celery worker service is included only when `celery_worker` is enabled.
+   - Admin bot token placeholders are included only when the Blueprint defines an admin bot.
 
----
-
-## Phase 11 — Generation Response Accuracy
-
-### Problem
-
-The generation workflow documentation says the response includes generated file list and manifest hash, but the actual response model only returns generation run metadata.
-
-### Required behavior
-
-Either update the API response schema or update the documentation. Prefer improving the API response.
-
-### Suggested files to change
-
-```text
-app/schemas/generation.py
-app/services/generation_service.py
-app/api/routes/generator.py
-tests/test_generation_service.py
-docs/generation-workflow.md
-```
-
-### Acceptance criteria
-
-- Generation response includes the run ID, status, generated artifact metadata, and ZIP filename/path or download URL.
-- Documentation matches the actual response.
-- Tests assert the response shape.
+11. Generated Alembic migration scaffold
+   - Generated projects include `backend/alembic.ini`, `backend/app/db/migrations/env.py`, `script.py.mako`, and a versions package.
+   - Alembic env imports generated model modules and uses `Base.metadata`.
+   - Initial migration revision is still created and reviewed by the developer.
 
 ---
 
-## Phase 12 — Generated Backend Security Implementation
+## Current real limitations
 
-### Problem
-
-Generated backend security functions are TODO stubs.
-
-### Required behavior
-
-Generated projects should include working password hashing and JWT encode/decode utilities.
-
-Mini App HMAC verification must be implemented only if the Bale Mini App verification contract is confirmed and documented.
-
-### Suggested files to change
-
-```text
-app/generator/templates/backend/app/core/security.py.j2
-app/generator/templates/backend/app/services/auth_service.py.j2
-app/generator/templates/backend/app/api/deps.py.j2
-pyproject.toml
-```
-
-### Acceptance criteria
-
-- Generated password hashing works.
-- Generated JWT create/decode works.
-- Generated auth dependency rejects invalid tokens.
-- Tests cover token success and failure.
-- Mini App verification remains explicit and testable, not trusted from frontend unsafe data.
+- Generated Blueprint business service methods may still raise `HTTPException(status_code=501)` because business logic is intentionally project-specific.
+- Generated entity service files remain CRUD/service skeletons and need real persistence logic.
+- Real Bale Mini App HMAC verification is not implemented yet; generated code rejects/fails closed instead of trusting frontend data.
+- Generated backend internal bot action/RBAC/audit endpoints referenced by `BackendClient` still need project-specific implementations.
+- Generated initial Alembic migration content is not created during generation.
+- Production deployment templates are minimal and not production-hardened.
+- Real Bale network integration tests are missing.
+- Artifact storage is local filesystem based.
+- Production-grade artifact storage, retention, and signed/authenticated download access are missing.
 
 ---
 
-## Phase 13 — Generated Service Layer Realism
+## Next task candidates
 
-### Problem
+### Task 08 — Generated service layer implementation for simple entity CRUD
 
-Generated endpoint services are stubs and often raise 501/NotImplementedError.
+Generate functional service methods for simple Blueprint entities while keeping business-specific operations as explicit 501 stubs.
 
-### Required behavior
+Acceptance criteria:
 
-For Blueprint-defined entities, generate basic CRUD service methods and route wiring.
+- Basic list/create/read/update/delete service methods work for simple entities.
+- Generated routes continue to delegate to services.
+- Auth, RBAC, and audit behavior remain intact.
+- Tests cover generated simple-entity CRUD paths.
 
-Blueprint-specific business operations may remain explicit TODOs, but generic entity CRUD must be functional.
+### Task 09 — Generated initial Alembic migration validation
 
-### Acceptance criteria
+Add a tested path for creating and validating the initial migration from generated models.
 
-- Generated entity list/create/read/update/delete works for simple entities.
-- Generated routes call service methods with request payloads and path params.
-- Tests are generated per entity.
+Acceptance criteria:
 
----
+- `alembic revision --autogenerate -m "initial"` works against generated projects.
+- Generated revision is reviewed in tests for expected tables.
+- Documentation explains how to run and inspect migrations.
 
-## Phase 14 — Bale Bot Handler Integration
+### Task 10 — Backend Mini App HMAC verification
 
-### Problem
+Implement generated backend verification for raw Bale Mini App `initData` once the Bale contract is confirmed.
 
-Generated bot command handlers dispatch but do not call backend services.
+Acceptance criteria:
 
-### Required behavior
+- Frontend still sends only raw `initData`.
+- Backend validates HMAC and `auth_date` freshness.
+- Invalid/expired Mini App auth is rejected.
+- No frontend `initDataUnsafe` authorization is introduced.
 
-Generate handler wiring based on `BotCommandSpec.handler` and Blueprint service mappings.
+### Task 11 — Generated backend bot action endpoints
 
-### Acceptance criteria
+Generate backend internal endpoints/services for bot action delegation used by `bale/shared/backend_client.py`.
 
-- Command handlers do not contain business logic.
-- Command handlers call backend service/client abstractions.
-- Admin bot handlers enforce role checks and audit hooks.
-- Tests cover user bot and admin bot command dispatch.
+Acceptance criteria:
 
----
+- Generated bot client paths have backend counterparts.
+- Registration/admin/permission checks use backend data.
+- Sensitive admin bot actions write audit logs.
+- Bot handlers remain interface adapters only.
 
-## Phase 15 — Frontend Field-Driven Pages
+### Task 12 — Production deployment hardening
 
-### Problem
+Harden the minimal generated Docker deployment path.
 
-Generated frontend pages are placeholders.
+Acceptance criteria:
 
-### Required behavior
-
-Generate route pages from Blueprint route type and entity field definitions.
-
-### Acceptance criteria
-
-- `list` routes produce table pages.
-- `form` routes produce forms.
-- `detail` routes produce detail views.
-- Admin routes remain guarded.
-- API errors and loading states are handled.
-
----
-
-## Phase 16 — Celery Worker Generation
-
-### Problem
-
-`celery_worker` is a known module but worker templates are not generated.
-
-### Required behavior
-
-When Blueprint enables `celery_worker`, generate worker configuration and task stubs.
-
-### Acceptance criteria
-
-- Generated project includes Celery app factory.
-- Redis/broker settings are configurable.
-- Long-running service methods can be mapped to tasks.
-- Tests or documented test stubs are generated.
-
----
-
-## Phase 17 — Production Deployment Templates
-
-### Problem
-
-Generated projects do not include production deployment templates.
-
-### Required behavior
-
-Generate Dockerfile, docker-compose production profile, and environment documentation.
-
-### Acceptance criteria
-
-- Generated backend can run in Docker.
-- Generated frontend can be built and served.
-- Environment variables are documented.
+- TLS/reverse proxy guidance is generated.
+- Backup and restore guidance is documented.
+- Runtime health checks are stronger than smoke checks.
+- Migration workflow is tested.
 - No secrets are hard-coded.
+
+### Task 13 — Artifact storage hardening
+
+Move Builder Platform artifact storage beyond local filesystem assumptions.
+
+Acceptance criteria:
+
+- Storage abstraction supports durable object storage.
+- Retention/cleanup policy is documented and testable.
+- Download access is authenticated or signed.
